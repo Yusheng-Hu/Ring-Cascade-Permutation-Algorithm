@@ -25,11 +25,18 @@ This repository is the official C++ implementation of the paper:
 ## 📊 Benchmarks
 
 ### Throughput & Efficiency (Intel i7-8550U @ 1.8 GHz)
-| Order (N) | Total Count (N!) | Time (s) | Rate (Giga-perm/s) | CPP (Cycles/Perm) |
-|:---:|:---:|:---:|:---:|:---:|
-| 12 | 479,001,600 | 0.2091 | 2.290 | 0.79 |
-| 13 | 6,227,020,800 | 1.8786 | 3.315 | 0.54 |
-| 14 | 87,178,291,200 | 21.7645 | **4.006** | **0.45** |
+### Performance Benchmark (Tested on N=9 to 14)
+
+| Order (N) | Total Count (N!) | Execution Time (s) | Throughput (Giga/s) |
+| :--- | :--- | :--- | :--- |
+| **9** | 362,880 | 0.000195 | 1.858 |
+| **10** | 3,628,800 | 0.002539 | 1.429 |
+| **11** | 39,916,800 | 0.016854 | 2.368 |
+| **12** | 479,001,600 | 0.138255 | 3.465 |
+| **13** | 6,227,020,800 | 1.449907 | 4.295 |
+| **14** | 87,178,829,1200 | 17.954149 | **4.856** |
+
+> **Observation**: Note that the throughput (Rate) significantly increases as $N$ grows, reaching a record-breaking **4.856 Giga-perms/s** at $N=14$.
 
 ### Superpermutation Verification
 | Order (N) | Theoretical Lower Bound ($\sum i!$) | Circle Algorithm Length | Status |
