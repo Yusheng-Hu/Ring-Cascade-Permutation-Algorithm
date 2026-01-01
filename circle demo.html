@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Circle Permutation System</title>
+    <style>
+        :root {
+            --c0: #2563eb; --c1: #d97706; --c2: #7c3aed; --c3: #dc2626; --c4: #059669;
+            --ring-color: #334155;
+        }
+        body { background: #f8fafc; color: #1e293b; font-family: 'Segoe UI', sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; }
+        
+        .stage-area { flex: 1; position: relative; background: #ffffff; overflow: hidden; }
+        .sidebar { width: 350px; background: #ffffff; border-left: 2px solid #e2e8f0; display: flex; flex-direction: column; padding: 25px; gap: 15px; z-index: 100; }
+
+        .card { background: #f1f5f9; border: 1px solid #e2e8f0; padding: 18px; border-radius: 12px; }
+        .label { font-size: 11px; color: #64748b; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; }
+        .p-val { font-size: 36px; font-weight: 900; letter-spacing: 5px; text-align: center; color: #0f172a; font-family: monospace; }
+        .res-box { font-size: 16px; font-weight: bold; color: #334155; font-family: monospace; min-height: 24px; padding: 10px; background: white; border-radius: 6px; border: 1px solid #e2e8f0; }
+        
+        button { width: 100%; padding: 18px; border-radius: 10px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; transition: 0.3s; background: #0f172a; color: white; }
+        button:disabled { background: #cbd5e1; cursor: wait; opacity: 0.7; }
+        .btn-stop { background: #ef4444 !important; }
+
+        .axis-line { position: absolute; width: 70px; left: 110px; height: 100%; background: #f8fafc; border-right: 2px solid #cbd5e1; z-index: 1; }
+        
+        .ring-path { 
+            position: absolute; border: 5px solid var(--ring-color); border-radius: 50%; 
+            left: 110px; transform: translateY(-50%) scale(0); 
+            opacity: 0; pointer-events: none; box-sizing: border-box; z-index: 5;
+            transition: all 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .ring-path.show { opacity: 1; transform: translateY(-50%) scale(1); }
+
+        .node { 
+            position: absolute; width: 46px; height: 46px; 
+            display: flex; align-items: center; justify-content: center; 
+            font-weight: 900; border-radius: 8px; color: white;
+            transition: all 1.4s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 19px; z-index: 50; opacity: 0;
+        }
+        .node.active { outline: 4px solid #000; transform: scale(1.1); z-index: 60; box-shadow: 0 6px 15px rgba(0,0,0,0.2); }
+        
+        .n0 { background: var(--c0); } .n1 { background: var(--c1); }
+        .n2 { background: var(--c2); } .n3 { background: var(--c3); }
+        .n4 { background: var(--c4); }
+
+        .status-msg { font-size: 14px; font-weight: bold; color: #2563eb; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="stage-area" id="stage">
+        <div class="axis-line"></div>
+    </div>
+
+    <div class="sidebar">
+        <div class="card">
+            <div class="label">P Pointer</div>
+            <div class="p-val" id="p-disp">00000</div>
+        </div>
+        <div class="card">
+            <div class="label">Recursive Result</div>
+            <div class="res-box" id="res-disp">Initializing...</div>
+        </div>
+        <div class="card">
+            <div class="label">Control Center</div>
+            <div id="status-txt" class="status-msg">SYSTEM BOOTING</div>
+            <button onclick="toggle()" id="ctrl-btn" disabled>LOADING SYSTEM...</button>
+        </div>
+        <div class="card" style="font-size: 12px; color: #64748b; line-height: 1.6;">
+            <strong>提示：</strong><br>
+            当全排列运行完成后，点击 RESTART 将重置指针并重新执行入场动画。
+        </div>
+    </div>
+
+<script>
+    const hRatio = 0.2;
+    const CONFIG = [
+        { lv: 1, y: 120, rx: 80 }, { lv: 2, y: 280, rx: 140 },
+        { lv: 3, y: 440, rx: 200 }, { lv: 4, y: 600, rx: 260 },
+        { lv: 5, y: 760, rx: 320 }
+    ];
+    let P = [0, 0, 0, 0, 0];
+    let isPlaying = false;
+    let isFinished = false;
+
+    function getSeq(lv, p) {
+        if (lv === 0) return [0];
+        let res = [...getSeq(lv - 1, p), lv];
+        let shift = p[lv];
+        for(let i=0; i<shift; i++) res.push(res.shift());
+        return res;
+    }
+
+    async function animatedInit() {
+        const stage = document.getElementById('stage');
+        const status = document.getElementById('status-txt');
+        const btn = document.getElementById('ctrl-btn');
+        
+        // 清理旧元素（用于重新开始时）
+        document.querySelectorAll('.ring-path, .node').forEach(el => el.remove());
+        
+        isFinished = false;
+        btn.disabled = true;
+        btn.innerText = "LOADING SYSTEM...";
+
+        for (let l = 0; l < 5; l++) {
+            status.innerText = `[STEP ${l+1}/5] CONSTRUCTING LAYER...`;
+            const conf = CONFIG[l];
+            const r = document.createElement('div');
+            r.className = 'ring-path';
+            r.style.width = (conf.rx * 2) + 'px';
+            r.style.height = (conf.rx * 2 * hRatio) + 'px';
+            r.style.top = conf.y + 'px';
+            stage.appendChild(r);
+            
+            r.offsetHeight; 
+            r.classList.add('show');
+            await new Promise(r => setTimeout(r, 800));
+
+            const seq = getSeq(l, P);
+            for (let idx = 0; idx < seq.length; idx++) {
+                const val = seq[idx];
+                const el = createNode(l, val);
+                if (val === l && l > 0) {
+                    el.style.left = "90%"; el.style.top = conf.y + "px";
+                } else if (l > 0) {
+                    placeNode(el, idx, CONFIG[l-1], true);
+                } else {
+                    el.style.left = "110px"; el.style.top = "0px";
+                }
+                stage.appendChild(el);
+                el.offsetHeight;
+                placeNode(el, idx, conf);
+                el.style.opacity = 1;
+                await new Promise(r => setTimeout(r, 200));
+            }
+        }
+
+        status.innerText = "SYSTEM ACTIVE";
+        btn.disabled = false;
+        btn.innerText = "START SIMULATION";
+        updateLabels();
+    }
+
+    function placeNode(el, idx, conf, instant) {
+        const angle = Math.PI - (idx * (2 * Math.PI / (conf.lv + 1)));
+        const x = (110 + conf.rx) + conf.rx * Math.cos(angle) - 23;
+        const y = conf.y + (conf.rx * hRatio * Math.sin(angle)) - 23;
+        el.style.transition = instant ? 'none' : 'all 1.4s cubic-bezier(0.4, 0, 0.2, 1)';
+        el.style.left = x + 'px';
+        el.style.top = y + 'px';
+        if (idx === 0) el.classList.add('active'); else el.classList.remove('active');
+    }
+
+    function createNode(lv, val) {
+        const el = document.createElement('div');
+        el.id = `node-${lv}-${val}`;
+        el.className = `node n${val} lv-${lv}`;
+        el.innerText = val;
+        return el;
+    }
+
+    function refreshNode(val, idx, lv, inst = false) {
+        let el = document.getElementById(`node-${lv}-${val}`) || createNode(lv, val);
+        if(!el.parentNode) document.getElementById('stage').appendChild(el);
+        placeNode(el, idx, CONFIG[lv], inst);
+    }
+
+    function updateLabels() {
+        document.getElementById('p-disp').innerText = P.join('');
+        document.getElementById('res-disp').innerText = "[" + getSeq(4, P).join(', ') + "]";
+    }
+
+    async function processCascade(topLv) {
+        if (topLv < 4) {
+            for (let l = 4; l > topLv; l--) {
+                document.querySelectorAll(`.lv-${l}`).forEach(n => {
+                    n.style.opacity = 0; n.style.transform = 'scale(0.5)';
+                });
+            }
+            await new Promise(r => setTimeout(r, 700));
+            for (let l = 4; l > topLv; l--) document.querySelectorAll(`.lv-${l}`).forEach(n => n.remove());
+        }
+        updateLabels();
+        for (let l = 0; l <= topLv; l++) {
+            getSeq(l, P).forEach((v, i) => refreshNode(v, i, l));
+        }
+        await new Promise(r => setTimeout(r, 1100));
+        if (topLv < 4) {
+            for (let l = topLv + 1; l < 5; l++) {
+                const base = getSeq(l - 1, P);
+                for (let idx = 0; idx < base.length; idx++) {
+                    const el = createNode(l, base[idx]);
+                    placeNode(el, idx, CONFIG[l-1], true);
+                    el.style.opacity = 0;
+                    document.getElementById('stage').appendChild(el);
+                    setTimeout(() => { placeNode(el, idx, CONFIG[l]); el.style.opacity = 1; }, idx * 60);
+                }
+                await new Promise(r => setTimeout(r, 1200));
+                const elN = createNode(l, l);
+                const targetIdx = getSeq(l, P).indexOf(l);
+                elN.style.left = "95%"; elN.style.top = CONFIG[l].y + "px"; elN.style.opacity = 0;
+                document.getElementById('stage').appendChild(elN);
+                await new Promise(r => setTimeout(r, 50));
+                placeNode(elN, targetIdx, CONFIG[l]); elN.style.opacity = 1;
+                await new Promise(r => setTimeout(r, 1000));
+            }
+        }
+    }
+
+    async function runStep() {
+        if (!isPlaying) return;
+        let topLv = 4;
+        P[4]++;
+        for (let i = 4; i > 0; i--) {
+            if (P[i] >= (i + 1)) { P[i] = 0; P[i - 1]++; topLv = i - 1; }
+        }
+        if (P[0] > 0) { finishCtrl(); return; }
+        await processCascade(topLv);
+        setTimeout(runStep, 800);
+    }
+
+    function finishCtrl() {
+        isPlaying = false;
+        isFinished = true;
+        const btn = document.getElementById('ctrl-btn');
+        btn.innerText = "RESTART";
+        btn.classList.remove('btn-stop');
+        document.getElementById('status-txt').innerText = "ALL PERMUTATIONS COMPLETE";
+    }
+
+    function toggle() {
+        if (isFinished) {
+            // 如果已经完成，重置数据并重新初始化
+            P = [0, 0, 0, 0, 0];
+            animatedInit();
+            return;
+        }
+
+        isPlaying = !isPlaying;
+        const btn = document.getElementById('ctrl-btn');
+        if (isPlaying) {
+            btn.innerText = "STOP SIMULATION";
+            btn.classList.add('btn-stop');
+            runStep();
+        } else {
+            btn.innerText = "RESUME SIMULATION";
+            btn.classList.remove('btn-stop');
+        }
+    }
+
+    window.onload = animatedInit;
+</script>
+</body>
+</html>
