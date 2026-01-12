@@ -4,6 +4,8 @@
 [![Complexity: O((n-1)!)](https://img.shields.io/badge/Complexity-O((n--1)!)-blue.svg)](#)
 [![Language: C++](https://img.shields.io/badge/Language-C%2B%2B-red.svg)](#)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18194997.svg)](https://doi.org/10.5281/zenodo.18194997)
+![Permutation Generation](https://img.shields.io/badge/Field-Combinatorial_Algorithms-blue)
+[![ORCID](https://img.shields.io/badge/ORCID-0009--0005--1980--5751-A6CE39?logo=orcid&logoColor=white)](https://orcid.org/0009-0005-1980-5751)
 
 An optimized iterative algorithm for Full Permutation generation that challenges the $O(N!)$ amortized complexity barrier.
 
