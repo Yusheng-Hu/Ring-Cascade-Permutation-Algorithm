@@ -11,36 +11,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        # Pulls the latest code from the repository
         uses: actions/checkout@v4
 
       - name: Get Environment & Metadata
-        # Extracts hardware info and the value of N from the C++ source
+        # Extract N and CPU model without extra spaces or symbols
         run: |
           MODEL=$(lscpu | grep "Model name" | cut -d':' -f2 | xargs)
-          N_VAL=$(grep "#define N " Circle_Permutation_Algorithm.cpp | awk '{print $3}')
+          N_VAL=$(grep "#define N " Circle_Permutation_Algorithm.cpp | awk '{print $3}' | tr -d '\r\n')
           echo "CPU_MODEL=$MODEL" >> $GITHUB_ENV
           echo "CURRENT_N=$N_VAL" >> $GITHUB_ENV
 
       - name: Compile
-        # Compiles with aggressive O3 and architecture-specific optimizations
         run: |
           g++ -O3 -std=c++11 -march=native -flto -ffast-math -fomit-frame-pointer \
           Circle_Permutation_Algorithm.cpp -o circle_test -pthread
 
       - name: Execute
-        # Runs the benchmark and captures time and checksum results
         run: |
           ./circle_test | tee run_log.txt
-          TIME_VAL=$(grep "RESULT_TIME" run_log.txt | awk '{print $2}')
-          CHECK_VAL=$(grep "CHECKSUM_COUNT" run_log.txt | awk '{print $2}')
+          # Use 'tr' to remove any potential hidden carriage returns or newlines
+          TIME_VAL=$(grep "RESULT_TIME" run_log.txt | awk '{print $2}' | tr -d '\r\n')
+          CHECK_VAL=$(grep "CHECKSUM_COUNT" run_log.txt | awk '{print $2}' | tr -d '\r\n')
           echo "TIME_CIRCLE=$TIME_VAL" >> $GITHUB_ENV
           echo "CHECKSUM=$CHECK_VAL" >> $GITHUB_ENV
 
       - name: Generate Summary Report
-        # Writes a clean Markdown table to the GitHub Step Summary
         if: always()
         run: |
+          # Use a heredoc to create a clean, single-block Markdown report
           cat <<EOF >> $GITHUB_STEP_SUMMARY
           ### 🚀 Performance Benchmark Report (N=${{ env.CURRENT_N }})
 
@@ -48,11 +46,11 @@ jobs:
           | :--- | :--- |
           | **N (Input Size)** | ${{ env.CURRENT_N }} |
           | **Execution Time** | \`${{ env.TIME_CIRCLE }} s\` |
-          | **Checksum (Permutations)** | \`${{ env.CHECKSUM }}\` |
+          | **Checksum (Perms)** | \`${{ env.CHECKSUM }}\` |
           | **Status** | Completed |
 
           #### 💻 Environment Information
           - **CPU Model:** ${{ env.CPU_MODEL }}
-          - **Optimization Flags:** \`-O3 -march=native -flto\`
-          - **Job Timestamp:** $(date -u)
+          - **Optimization:** \`-O3 -march=native -flto\`
+          - **Timestamp:** $(date -u)
           EOF
