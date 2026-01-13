@@ -1,6 +1,8 @@
 /**
  * @file Circle_Permutation_Algorithm.cpp
- * @brief High-performance Circle Permutation Algorithm
+ * @brief High-performance Circle Permutation Algorithm (Dynamic Output Version)
+ * @copyright Copyright (c) 2024 [ Yusheng-Hu ]. All rights reserved.
+ * @license Licensed under the MIT License.
  */
 
 #include <cstdio>
@@ -13,20 +15,23 @@
 #include <pthread.h>
 #endif
 
-// The YML script parses this line directly
+// Configuration: Change N here
 #define N 13
 #define lastIndex (N - 1)
 #define secondLastIndex (N - 2)
 #define thirdLastIndex (N - 3)
 
 int main() {
-    // Optimization: Affinity for Linux environment
+    // Optimization: Lock process to a single CPU core on Linux
 #ifdef __linux__
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(1, &cpuset);
+    CPU_SET(0, &cpuset);
     pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
 #endif
+
+    // Metadata output for YML parser
+    printf("PARAM_N: %d\n", N);
 
     static int C[N] = {0};
     static int D[N][3 * N] = {0};
@@ -77,8 +82,8 @@ int main() {
     auto finish = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = finish - start;
     
-    // Clear output for reliable parsing
-    printf("\nRESULT_TIME: %lf seconds\n", elapsed.count());
+    // Core performance metrics output
+    printf("RESULT_TIME: %lf seconds\n", elapsed.count());
     printf("CHECKSUM_COUNT: %llu\n", total_count);
 
     return 0;
