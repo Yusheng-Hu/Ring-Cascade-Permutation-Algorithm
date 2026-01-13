@@ -16,7 +16,7 @@
 #endif
 
 // Configuration: Change N here
-#define N 14
+#define N 15
 #define lastIndex (N - 1)
 #define secondLastIndex (N - 2)
 #define thirdLastIndex (N - 3)
@@ -88,4 +88,5 @@ int main() {
 
     return 0;
 }
+
 
