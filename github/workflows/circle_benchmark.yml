@@ -15,41 +15,35 @@ jobs:
 
     - name: Get CPU Hardware Info
       run: |
-        # Identify the CPU model of the GitHub runner
         MODEL=$(lscpu | grep "Model name" | cut -d':' -f2 | xargs)
         echo "CPU_MODEL=$MODEL" >> $GITHUB_ENV
 
     - name: Compile Circle Algorithm
       run: |
-        # Use extreme optimization flags for the permutation logic:
-        # -O3: Aggressive code optimization
-        # -march=native: Target the specific runner CPU architecture
-        # -flto: Enable Link Time Optimization
-        # -ffast-math: Optimize floating-point math (at the cost of strict IEEE compliance)
-        # -fomit-frame-pointer: Free up an extra register for general-purpose use
+        # Using O3 and LTO for maximum performance
         g++ -O3 -std=c++11 -march=native -flto -ffast-math -fomit-frame-pointer \
         Circle_Permutation_Algorithm.cpp -o circle_test -pthread
 
     - name: Execute and Capture Results
       run: |
-        # Execute the compiled binary and pipe output to a text file
-        ./circle_test > circle_result.txt
-        cat circle_result.txt
+        # Using 'tee' to ensure output is visible in logs even if the job is long
+        ./circle_test | tee circle_result.txt
         
-        # Parse the execution time from the last line of the output
+        # Parse the execution time
         TIME_VAL=$(grep "circle_test" circle_result.txt | awk '{print $3}')
         echo "TIME_CIRCLE=$TIME_VAL" >> $GITHUB_ENV
 
     - name: Generate Summary Report
+      if: always() # Ensure report is generated even if previous steps take too long
       run: |
-        # Create a professional Markdown report in the GitHub Action Summary
         echo "### 🚀 Circle Permutation Performance Report (N=14)" >> $GITHUB_STEP_SUMMARY
         echo "| Algorithm | Execution Time | Status |" >> $GITHUB_STEP_SUMMARY
         echo "| :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-        echo "| Circle Permutation | \`${{ env.TIME_CIRCLE }} s\` | Optimized |" >> $GITHUB_STEP_SUMMARY
+        if [ -n "${{ env.TIME_CIRCLE }}" ]; then
+          echo "| Circle Permutation | \`${{ env.TIME_CIRCLE }} s\` | Completed |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| Circle Permutation | \`Running / Incomplete\` | Pending |" >> $GITHUB_STEP_SUMMARY
+        fi
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "#### 💻 Runtime Environment" >> $GITHUB_STEP_SUMMARY
         echo "- **CPU Model:** ${{ env.CPU_MODEL }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Optimization Flags:** \`-O3 -march=native -flto -ffast-math\`" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "✅ *Benchmark completed successfully.*" >> $GITHUB_STEP_SUMMARY
