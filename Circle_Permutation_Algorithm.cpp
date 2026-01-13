@@ -15,14 +15,13 @@
 #include <pthread.h>
 #endif
 
-// You can change N here. The YML will automatically detect this value.
+// Current configuration
 #define N 13
 #define lastIndex (N - 1)
 #define secondLastIndex (N - 2)
 #define thirdLastIndex (N - 3)
 
 int main() {
-    // Set thread affinity for Linux (GitHub Actions Runner)
 #ifdef __linux__
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -32,7 +31,7 @@ int main() {
 
     static int C[N] = {0};
     static int D[N][3 * N] = {0};
-    unsigned long long total_count = 0; // Checksum counter
+    unsigned long long total_count = 0;
 
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -65,12 +64,9 @@ int main() {
         memcpy(P3, src_ptr, memcpy_size);
 
         for (int circle_index = 0; circle_index < lastIndex; circle_index++) {
-            // Inner logic update
             D[lastIndex][lastIndex + circle_index] = D[lastIndex][N + circle_index];
             D[lastIndex][N + circle_index] = lastIndex;
         }
-        
-        // Update checksum: each outer loop generates (N-1) permutations
         total_count += lastIndex;
 
         C[thirdLastIndex]++;
@@ -82,10 +78,9 @@ int main() {
     auto finish = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = finish - start;
     
-    // Output for YML parsing
+    // Fixed labels for reliable parsing
     printf("\nRESULT_TIME: %lf seconds\n", elapsed.count());
     printf("CHECKSUM_COUNT: %llu\n", total_count);
 
-    if (D[lastIndex][lastIndex] == 100) printf("rare\n");
     return 0;
 }
