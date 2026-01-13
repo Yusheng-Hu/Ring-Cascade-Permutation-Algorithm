@@ -1,8 +1,6 @@
 /**
  * @file Circle_Permutation_Algorithm.cpp
- * @brief High-performance Circle Permutation Algorithm (Cross-platform)
- * @copyright Copyright (c) 2024 [ Yusheng-Hu ]. All rights reserved.
- * @license Licensed under the MIT License.
+ * @brief High-performance Circle Permutation Algorithm
  */
 
 #include <cstdio>
@@ -15,13 +13,14 @@
 #include <pthread.h>
 #endif
 
-// Current configuration
+// The YML script parses this line directly
 #define N 13
 #define lastIndex (N - 1)
 #define secondLastIndex (N - 2)
 #define thirdLastIndex (N - 3)
 
 int main() {
+    // Optimization: Affinity for Linux environment
 #ifdef __linux__
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -78,10 +77,9 @@ int main() {
     auto finish = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = finish - start;
     
-    // Crucial: Fixed labels for reliable parsing
+    // Clear output for reliable parsing
     printf("\nRESULT_TIME: %lf seconds\n", elapsed.count());
     printf("CHECKSUM_COUNT: %llu\n", total_count);
 
     return 0;
 }
-
