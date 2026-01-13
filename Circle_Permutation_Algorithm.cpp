@@ -20,7 +20,7 @@
 #include <pthread.h>
 #endif
 
-#define N 14
+#define N 13
 // #define OUTPUT 1
 #define lastIndex (N - 1)
 #define secondLastIndex (N - 2)
@@ -112,3 +112,4 @@ int main()
   }
   return 0;
 }
+
