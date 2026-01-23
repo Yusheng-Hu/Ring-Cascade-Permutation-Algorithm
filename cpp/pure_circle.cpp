@@ -33,7 +33,7 @@
  #endif
  
  #ifndef PP_N
- #define PP_N 12 // 对应 N=14
+ #define PP_N 14 // 对应 N=16
  #endif
  
  // CPU 绑定函数
