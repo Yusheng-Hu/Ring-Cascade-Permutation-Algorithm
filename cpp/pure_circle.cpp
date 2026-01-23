@@ -17,112 +17,89 @@
  * * License: MIT License
  * Copyright (c) 2026 YUSHENG-HU
  */
-
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-
-#include <cstdio>
+#include <iostream>
+#include <vector>
 #include <cstring>
-#include <ctime>
+#include <chrono>
+#include <cstdio>
 
-#ifdef _WIN32
-    #include <windows.h>
-#else
-    #include <sched.h>
-    #include <unistd.h>
+#ifndef PP_N
+#define PP_N 12 // Corresponds to N=14
 #endif
 
-#define N 14  
-#define lastIndex (N - 1)
-#define secondLastIndex (N - 2)
-
-// Platform-independent core affinity
-void set_cpu_affinity(int core_id) {
-#ifdef _WIN32
-    if (!SetThreadAffinityMask(GetCurrentThread(), 1ULL << core_id)) {
-        printf("Warning: Could not set CPU affinity to core %d\n", core_id);
-    }
-#else
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(core_id, &cpuset);
-    if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0) {
-        printf("Warning: Could not set CPU affinity to core %d\n", core_id);
-    }
-#endif
-}
-
-// Platform-independent timer
-double get_time_seconds() {
-#ifdef _WIN32
-    LARGE_INTEGER freq, counter;
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&counter);
-    return (double)counter.QuadPart / freq.QuadPart;
-#else
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-#endif
-}
+// #define DEBUG_OUTPUT
 
 int main() {
-    set_cpu_affinity(4);
+    const int CP_N = PP_N + 2; 
+    const int VAL_ELM_N_MINUS_2 = PP_N;      
+    const int VAL_ELM_N_MINUS_1 = PP_N + 1;  
 
-    static int Circle_D[3 * N] = {0}; 
-    static int C_PP[N] = {0}; 
-    
-    int *P1 = &Circle_D[0];         
-    int *P2 = &Circle_D[N];           
-    int *P3 = &Circle_D[N + (N - 1)]; 
+    const int OFFSET_B1 = 0;
+    const int OFFSET_B2 = CP_N;
+    const int OFFSET_B3 = CP_N + (CP_N - 1);
 
-    for (int j = 0; j < N; j++) P1[j] = j;
+    int C[PP_N] = {0};
+    int D[3 * CP_N] = {0}; 
+    int i = 0; // Remove volatile for maximum compiler optimization at N=14
+    unsigned long long total_count = 0;
+    unsigned long long checksum = 0;
 
-    unsigned long long total_perms = 0;
-    double start_time = get_time_seconds();
+    for (int k = 0; k < PP_N; k++) D[k] = k;
 
-    while (C_PP[0] < 1) {
-        // [1] Sync mirror
-        memcpy(P2, P1, (N - 1) * sizeof(int));
-        memcpy(P3, P1, (N - 1) * sizeof(int));
+    // Start timing (cross-platform compatible)
+    auto start = std::chrono::high_resolution_clock::now();
 
-        // [2] CP burst phase
-        for (int circle_index = 0; circle_index < lastIndex; circle_index++) {
-            total_perms += N;
-            Circle_D[lastIndex + circle_index] = Circle_D[N + circle_index];
-            Circle_D[N + circle_index] = lastIndex;
+    while (C[0] < 1) {
+        for (; i < PP_N - 1; ++i) {
+            D[i] = D[C[i]];
+            D[C[i]] = i;
         }
+        for (int ii = 0; ii < PP_N; ii++) {
+            D[PP_N - 1] = D[ii];
+            D[ii] = PP_N - 1;
 
-        // [3] PP increment carry and in-place swap
-        int i = N - 3; 
-        C_PP[i]++;
-        while (i > 0 && C_PP[i] > i) {
-            int target = C_PP[i] - 1;
-            int temp = P1[i]; P1[i] = P1[target]; P1[target] = temp;
-            C_PP[i] = 0;
-            i--;
-            C_PP[i]++;
-        }
-        if (C_PP[0] < 1) {
-            int target = C_PP[i] - 1;
-            if (target >= 0) {
-                int temp = P1[i]; P1[i] = P1[target]; P1[target] = temp;
+            D[PP_N] = VAL_ELM_N_MINUS_2;
+            D[PP_N + 1] = VAL_ELM_N_MINUS_1;
+            
+            // Construct redundant memory
+            memcpy(&D[OFFSET_B2], &D[OFFSET_B1], (CP_N - 1) * sizeof(int));
+            memcpy(&D[OFFSET_B3], &D[OFFSET_B1], (CP_N - 1) * sizeof(int));
+
+            for (int layer_shift = 0; layer_shift < CP_N - 1; layer_shift++) {
+                for (int base_shift = 0; base_shift < CP_N; base_shift++) {
+                    total_count++;
+                    #ifdef DEBUG_OUTPUT
+                        for (int k = 0; k < CP_N; k++) printf("%d ", D[base_shift + k + layer_shift]);
+                        printf("\n");
+                    #else
+                        checksum += D[base_shift + layer_shift];
+                    #endif
+                }
+                // Logical scroll swap
+                int temp = D[PP_N + 2 + layer_shift];
+                D[PP_N + 2 + layer_shift] = D[PP_N + layer_shift + 1];
+                D[PP_N + layer_shift + 1] = temp;
             }
+            D[ii] = D[PP_N - 1];
         }
-        P1[lastIndex] = lastIndex; 
+        D[C[PP_N - 2]] = D[PP_N - 2];
+        C[PP_N - 2]++;
+        for (i = PP_N - 2; (i > 0) && (C[i] > i); i--) {
+            C[i] = 0;
+            C[i - 1]++;
+            D[C[i - 1] - 1] = D[i - 1];
+        }
     }
 
-    double duration = get_time_seconds() - start_time;
+    auto finish = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = finish - start;
+    double duration = elapsed.count();
 
-    printf("\n--- Performance Result ---");
-    printf("\nN: %d", N);
-    printf("\nTotal Permutations: %llu", total_perms);
-    printf("\nTime: %.4f seconds", duration);
-    if (duration > 0) {
-        printf("\nSpeed: %.2f Giga-perms/sec", (double)total_perms / duration / 1e9);
-    }
-    printf("\n--------------------------\n");
+    // Strictly match keywords for grep in YML
+    printf("Total Permutations: %llu\n", total_count);
+    printf("Time: %.6f\n", duration);
+    printf("Speed: %.2f\n", (total_count / duration) / 1e9); 
+    printf("Checksum: %llu\n", checksum);
 
     return 0;
 }
