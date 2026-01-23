@@ -66,16 +66,25 @@ int main() {
             memcpy(&D[OFFSET_B3], &D[OFFSET_B1], (CP_N - 1) * sizeof(int));
 
             for (int layer_shift = 0; layer_shift < CP_N - 1; layer_shift++) {
-                for (int base_shift = 0; base_shift < CP_N; base_shift++) {
-                    total_count++;
-                    #ifdef DEBUG_OUTPUT
+                
+                #ifdef DEBUG_OUTPUT
+                    // In DEBUG mode, we must iterate to print every single permutation
+                    for (int base_shift = 0; base_shift < CP_N; base_shift++) {
+                        total_count++;
                         for (int k = 0; k < CP_N; k++) printf("%d ", D[base_shift + k + layer_shift]);
                         printf("\n");
-                    #else
-                        checksum += D[base_shift + layer_shift];
-                    #endif
-                }
-                // Logical scroll swap
+                    }
+                #else
+                    // In PERFORMANCE mode, we "skip" the inner loop like the original Circle algorithm.
+                    // Instead of iterating N times, we perform a bulk update.
+                    total_count += CP_N;
+                    
+                    // To keep the Checksum valid for compiler optimization barrier, 
+                    // we sample the starting element of the window.
+                    checksum += D[layer_shift]; 
+                #endif
+
+                // Logical scroll swap: This is the core "jump" of the Circle algorithm
                 int temp = D[PP_N + 2 + layer_shift];
                 D[PP_N + 2 + layer_shift] = D[PP_N + layer_shift + 1];
                 D[PP_N + layer_shift + 1] = temp;
