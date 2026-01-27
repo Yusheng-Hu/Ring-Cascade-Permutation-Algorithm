@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main" ]
 paths:
-      - 'cpp/pure_circle.cpp'
+  - 'cpp/pure_circle.cpp'
   pull_request:
     branches: [ "main" ]
     paths:
