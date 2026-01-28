@@ -33,7 +33,7 @@
  #endif
  
  #ifndef PP_N
- #define PP_N 14 // Default setup for N=16 (CP_N = PP_N + 2)
+ #define PP_N 13 // Default setup for N=15 (CP_N = PP_N + 2)
  #endif
  
  // Function to bind execution to a specific CPU core
