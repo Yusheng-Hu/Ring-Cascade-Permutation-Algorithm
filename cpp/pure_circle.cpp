@@ -2,7 +2,7 @@
  * @file    pure_circle.cpp
  * @brief   High-Performance Permutation Generator using Circle Algorithm
  * @author  YUSHENG-HU
- * @date    2026-01-23
+ * @date    2026-01-28
  * @details
  * This implementation achieves ultra-high throughput (~16 Giga-perms/sec) by 
  * combining a Non-recursive Plain Changes (PP) generator with a Circular 
