@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Algorithm Dashboard | Yusheng-Hu</title>
+    <title>RCPA Algorithm Dashboard</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -13,24 +13,35 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
+            padding: 20px;
         }
 
         .container {
             background: white;
             padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
             text-align: center;
-            max-width: 400px;
+            max-width: 500px;
             width: 100%;
         }
 
         h1 {
-            font-size: 1.5rem;
+            font-size: 1.6rem;
             margin-bottom: 1.5rem;
             color: #0969da;
+        }
+
+        /* 关键：这里是图片的样式 */
+        .complexity-chart {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            border: 1px solid #d0d7de;
+            display: block;
         }
 
         .links {
@@ -43,7 +54,7 @@
             text-decoration: none;
             color: white;
             background-color: #2da44e;
-            padding: 12px;
+            padding: 14px;
             border-radius: 6px;
             font-weight: 600;
             transition: background 0.2s;
@@ -63,7 +74,7 @@
 
         footer {
             margin-top: 2rem;
-            font-size: 0.8rem;
+            font-size: 0.85rem;
             color: #57606a;
         }
     </style>
@@ -71,17 +82,19 @@
 
 <body>
     <div class="container">
-        <h1>Algorithm Project Hub</h1>
+        <h1>RCPA Algorithm Analysis</h1>
+
+        <img src="algorithm-complexity.png" alt="RCPA Complexity Breakdown" class="complexity-chart">
+
         <div class="links">
             <a href="Ring-Cascade_demo.html">View Ring-Cascade-Permutation-Algorithm basic Demo</a>
             <a href="triple_process_reducecomplex.html" class="secondary">View Speed Triple Process Analysis</a>
         </div>
+
         <footer>
-            Project: Ring-Cascade-Permutation-Algorithm<br>
-            Managed by Dr. YUSHENG-HU
+            Developed by Dr. Yusheng Hu
         </footer>
     </div>
 </body>
-
 
 </html>
