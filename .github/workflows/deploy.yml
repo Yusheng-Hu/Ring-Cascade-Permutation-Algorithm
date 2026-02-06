@@ -2,12 +2,12 @@
 name: Deploy-Algorithm-Project
 
 on:
-  push:
-    branches: ["main"]
+  #push:
+  #  branches: ["main"]
     # Fixed: paths is now correctly aligned with branches
-    paths:
-      - "*.html"
-      - "index.html" 
+  #  paths:
+  #    - "*.html"
+  #    - "index.html" 
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:

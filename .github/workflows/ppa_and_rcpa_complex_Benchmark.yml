@@ -1,11 +1,11 @@
 name: ppa and rcpa complex Benchmark
 
 on:
-  push:
-    branches: [ "main" ]
+  #push:
+  #  branches: [ "main" ]
     # Line 6: Now correctly indented under 'push'
-    paths:
-      - 'cpp/ppa_rcpa.cpp'
+  #  paths:
+  #    - 'cpp/ppa_rcpa.cpp'
       
   pull_request:
     branches: [ "main" ]

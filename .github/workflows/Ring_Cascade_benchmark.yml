@@ -1,11 +1,11 @@
 name: Ring-Cascade-Permutation-Algorithm Benchmark
 
 on:
-  push:
-    branches: [ "main" ]
-    paths:
+  #push:
+  #  branches: [ "main" ]
+  #  paths:
       # Only trigger if this specific file changes
-      - 'Ring-Cascade-Permutation-Algorithm.cpp'
+  #    - 'Ring-Cascade-Permutation-Algorithm.cpp'
   workflow_dispatch:
 
 jobs:
