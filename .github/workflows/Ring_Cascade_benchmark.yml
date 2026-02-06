@@ -1,64 +1,102 @@
-name: Ring-Cascade-Permutation-Algorithm Benchmark
+name: RCPA-Performance-Benchmark
 
 on:
-  #push:
-  #  branches: [ "main" ]
-  #  paths:
-      # Only trigger if this specific file changes
-  #    - 'Ring-Cascade-Permutation-Algorithm.cpp'
+  # Manual trigger only for precision benchmarking
   workflow_dispatch:
+    inputs:
+      n_factor:
+        description: 'Set N for Permutation (e.g., 10, 11, 12)'
+        required: true
+        default: '12'
+
+concurrency:
+  group: rcpa-readme-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
   benchmark:
-    name: Run Profiling
+    name: RCPA Benchmarking
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      - name: Get CPU Info
-        # Get hardware model for environment context
-        run: |
-          MODEL=$(lscpu | grep "Model name" | cut -d':' -f2 | xargs)
-          echo "CPU_MODEL=$MODEL" >> $GITHUB_ENV
+    - name: Detect CPU Info
+      run: |
+        CPU_NAME=$(lscpu | grep 'Model name' | cut -f 2 -d ":" | sed 's/^[ \t]*//')
+        if [[ "$CPU_NAME" == *"AMD"* ]]; then VENDOR="AMD"; else VENDOR="INTEL"; fi
+        echo "CPU_MODEL=$CPU_NAME" >> $GITHUB_ENV
+        echo "VENDOR=$VENDOR" >> $GITHUB_ENV
 
-      - name: Compile
-        # Compile with maximum optimization flags
-        run: |
-          g++ -O3 -std=c++11 -march=native -flto -ffast-math -fomit-frame-pointer \
-          Ring-Cascade-Permutation-Algorithm.cpp -o Ring_Cascade_test -pthread
+    - name: Compile RCPA
+      # Using optimized flags but skipping -flto for faster iteration
+      run: |
+        g++ -O3 -std=c++11 -march=native -ffast-math -fomit-frame-pointer \
+        cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_bin -pthread
 
-      - name: Execute and Parse
-        # Run the binary and dynamically extract N, Time, and Checksum
-        run: |
-          ./Ring_Cascade_test | tee run_log.txt
-          
-          # Dynamic extraction from runtime output
-          DYNAMIC_N=$(grep "PARAM_N" run_log.txt | awk '{print $2}' | tr -d '\r\n')
-          TIME_VAL=$(grep "RESULT_TIME" run_log.txt | awk '{print $2}' | tr -d '\r\n')
-          CHECK_VAL=$(grep "CHECKSUM_COUNT" run_log.txt | awk '{print $2}' | tr -d '\r\n')
-          
-          # Save to environment variables
-          echo "REPORT_N=$DYNAMIC_N" >> $GITHUB_ENV
-          echo "TIME_Ring_Cascade=$TIME_VAL" >> $GITHUB_ENV
-          echo "CHECKSUM=$CHECK_VAL" >> $GITHUB_ENV
+    - name: Execute RCPA Benchmark
+      run: |
+        # Pass N from manual input to the binary
+        ./rcpa_bin ${{ github.event.inputs.n_factor }} > result_rcpa.txt
+        cat result_rcpa.txt
 
-      - name: Generate Summary Report
-        # Create a professional Markdown summary using the dynamic variables
-        if: always()
-        run: |
-          cat <<EOF >> $GITHUB_STEP_SUMMARY
-          ### 🚀 Performance Benchmark Report (N=${{ env.REPORT_N }})
+    - name: Inject into README via Python
+      shell: python
+      run: |
+        import os, sys, re
+        
+        vendor = os.environ.get('VENDOR', 'INTEL')
+        # Preserving extensibility for future PP/Heaps comparison
+        start_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_START)"
+        end_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_END)"
+        
+        # Parse the structured [METRIC_START] block
+        with open("result_rcpa.txt", "r") as f:
+            log = f.read()
+        
+        match = re.search(r"\[METRIC_START\]\nN_VALUE: (\d+)\nTIME_SEC: ([\d.]+)\n\[METRIC_END\]", log)
+        if not match:
+            print("Error: Could not find structured metrics in output!")
+            sys.exit(1)
+            
+        n_val = match.group(1)
+        time_sec = match.group(2)
+        timestamp = os.popen("date -u +'%Y-%m-%d %H:%M:%S UTC'").read().strip()
+        cpu_model = os.environ.get('CPU_MODEL', 'Unknown')
 
-          | Metric | Value |
-          | :--- | :--- |
-          | **Input Size (N)** | ${{ env.REPORT_N }} |
-          | **Execution Time** | \`${{ env.TIME_Ring_Cascade }} s\` |
-          | **Total Permutations** | \`${{ env.CHECKSUM }}\` |
-          | **Status** | ✅ Completed |
+        # Build Markdown Table
+        table =  f"### 🚀 RCPA Performance Report (N={n_val})\n"
+        table += f"- **Last Run:** `{timestamp}`\n"
+        table += f"- **Processor:** `{cpu_model}`\n\n"
+        table += f"| Algorithm | N-Factor | Execution Time | Status |\n"
+        table += f"| :--- | :--- | :--- | :--- |\n"
+        table += f"| **RCPA** | **{n_val}** | {time_sec} s | ✅ Success |\n"
+        # Note: Future slots for | PP | ... | and | Heaps | ... | can be added here
+        
+        with open("README.md", "r", encoding="utf-8") as f:
+            readme = f.read()
+            
+        if start_m in readme and end_m in readme:
+            prefix = readme.split(start_m)[0]
+            suffix = readme.split(end_m)[1]
+            new_readme = f"{prefix}{start_m}\n\n{table}\n\n{end_m}{suffix}"
+            with open("README.md", "w", encoding="utf-8") as f:
+                f.write(new_readme)
+        else:
+            print(f"Error: Markers RCPA_PERFORMANCE_{vendor} not found in README!")
+            sys.exit(1)
 
-          #### 💻 System Environment
-          - **Processor:** ${{ env.CPU_MODEL }}
-          - **Optimization:** \`-O3 -march=native -flto\`
-          - **Generated At:** $(date -u)
-          EOF
+    - name: Git Push Changes
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add README.md
+        git commit -m "docs: update RCPA benchmark data for ${{ env.VENDOR }} [skip ci]" || exit 0
+        git pull --rebase origin main
+        git push origin main
