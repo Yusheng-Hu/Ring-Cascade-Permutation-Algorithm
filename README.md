@@ -43,6 +43,19 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 
 ## 📊 Benchmarks
 
+## 🚀 Performance: Ring Cascade Permutation Algorithm (RCPA)
+
+### 🔹 AMD Architecture Benchmark
+[//]: # (RCPA_PERFORMANCE_AMD_START)
+*Waiting for AMD benchmark data (Manual Trigger)...*
+[//]: # (RCPA_PERFORMANCE_AMD_END)
+
+### 🔹 Intel Architecture Benchmark
+[//]: # (RCPA_PERFORMANCE_INTEL_START)
+*Waiting for Intel benchmark data (Manual Trigger)...*
+[//]: # (RCPA_PERFORMANCE_INTEL_END)
+
+
 ### Throughput & Efficiency (Intel i7-8550U @ 1.8 GHz)
 ### Performance Benchmark (Tested on N=9 to 14)
 
