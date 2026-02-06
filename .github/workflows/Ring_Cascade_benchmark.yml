@@ -1,13 +1,8 @@
 name: RCPA-Performance-Benchmark
 
 on:
-  # Manual trigger only for precision benchmarking
   workflow_dispatch:
-    inputs:
-      n_factor:
-        description: 'Set N for Permutation (e.g., 10, 11, 12)'
-        required: true
-        default: '12'
+  # Manual trigger with no inputs required, runs 10 to 13 automatically
 
 concurrency:
   group: rcpa-readme-sync
@@ -18,8 +13,13 @@ permissions:
 
 jobs:
   benchmark:
-    name: RCPA Benchmarking
+    name: RCPA Benchmark (N=${{ matrix.n_factor }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Automatically iterate through N=10, 11, 12, 13
+        n_factor: [10, 11, 12, 13]
 
     steps:
     - name: Checkout Code
@@ -35,15 +35,14 @@ jobs:
         echo "VENDOR=$VENDOR" >> $GITHUB_ENV
 
     - name: Compile RCPA
-      # Using optimized flags but skipping -flto for faster iteration
       run: |
         g++ -O3 -std=c++11 -march=native -ffast-math -fomit-frame-pointer \
         cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_bin -pthread
 
     - name: Execute RCPA Benchmark
       run: |
-        # Pass N from manual input to the binary
-        ./rcpa_bin ${{ github.event.inputs.n_factor }} > result_rcpa.txt
+        # Run with the current matrix N value
+        ./rcpa_bin ${{ matrix.n_factor }} > result_rcpa.txt
         cat result_rcpa.txt
 
     - name: Inject into README via Python
@@ -52,17 +51,16 @@ jobs:
         import os, sys, re
         
         vendor = os.environ.get('VENDOR', 'INTEL')
-        # Preserving extensibility for future PP/Heaps comparison
         start_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_START)"
         end_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_END)"
         
-        # Parse the structured [METRIC_START] block
         with open("result_rcpa.txt", "r") as f:
             log = f.read()
         
+        # Regex matches the [METRIC_START] block from your C++ code
         match = re.search(r"\[METRIC_START\]\nN_VALUE: (\d+)\nTIME_SEC: ([\d.]+)\n\[METRIC_END\]", log)
         if not match:
-            print("Error: Could not find structured metrics in output!")
+            print("Error: Metrics not found!")
             sys.exit(1)
             
         n_val = match.group(1)
@@ -70,33 +68,44 @@ jobs:
         timestamp = os.popen("date -u +'%Y-%m-%d %H:%M:%S UTC'").read().strip()
         cpu_model = os.environ.get('CPU_MODEL', 'Unknown')
 
-        # Build Markdown Table
-        table =  f"### 🚀 RCPA Performance Report (N={n_val})\n"
-        table += f"- **Last Run:** `{timestamp}`\n"
-        table += f"- **Processor:** `{cpu_model}`\n\n"
-        table += f"| Algorithm | N-Factor | Execution Time | Status |\n"
-        table += f"| :--- | :--- | :--- | :--- |\n"
-        table += f"| **RCPA** | **{n_val}** | {time_sec} s | ✅ Success |\n"
-        # Note: Future slots for | PP | ... | and | Heaps | ... | can be added here
+        # Generate single row for the comparison table
+        # Pre-formatting for future PP/Heaps rows
+        new_row = f"| **RCPA** | **{n_val}** | {time_sec} s | `{cpu_model}` | ✅ |\n"
         
         with open("README.md", "r", encoding="utf-8") as f:
             readme = f.read()
             
         if start_m in readme and end_m in readme:
-            prefix = readme.split(start_m)[0]
-            suffix = readme.split(end_m)[1]
-            new_readme = f"{prefix}{start_m}\n\n{table}\n\n{end_m}{suffix}"
+            parts = readme.split(start_m)
+            prefix = parts[0]
+            suffix = parts[1].split(end_m)[1]
+            content = parts[1].split(end_m)[0].strip()
+            
+            # Initialize table header if first run
+            if "| Algorithm |" not in content:
+                content = "\n| Algorithm | N | Time | CPU | Status |\n| :--- | :--- | :--- | :--- | :--- |\n"
+            
+            # Append new result row
+            updated_content = content.strip() + "\n" + new_row
+            
+            new_readme = f"{prefix}{start_m}\n{updated_content}\n{end_m}{suffix}"
             with open("README.md", "w", encoding="utf-8") as f:
                 f.write(new_readme)
         else:
-            print(f"Error: Markers RCPA_PERFORMANCE_{vendor} not found in README!")
             sys.exit(1)
 
-    - name: Git Push Changes
+    - name: Synchronized Push
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add README.md
-        git commit -m "docs: update RCPA benchmark data for ${{ env.VENDOR }} [skip ci]" || exit 0
-        git pull --rebase origin main
-        git push origin main
+        # Using loop to handle parallel matrix update collisions
+        for i in {1..10}; do
+          git add README.md
+          if git commit -m "docs: update benchmark N=${{ matrix.n_factor }} [skip ci]"; then
+            git pull --rebase origin main
+            git push origin main && exit 0
+          else
+            exit 0
+          fi
+          sleep $(( (RANDOM % 10) + 5 ))
+        done
