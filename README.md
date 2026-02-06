@@ -61,7 +61,16 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 
 ### 🔹 Intel Architecture Benchmark
 [//]: # (RCPA_PERFORMANCE_INTEL_START)
-*Waiting for Intel benchmark data (Manual Trigger)...*
+
+### 🚀 RCPA Performance Report (N=12)
+- **Last Run:** `2026-02-06 09:14:36 UTC`
+- **Processor:** `Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz`
+
+| Algorithm | N-Factor | Execution Time | Status |
+| :--- | :--- | :--- | :--- |
+| **RCPA** | **12** | 0.078088 s | ✅ Success |
+
+
 [//]: # (RCPA_PERFORMANCE_INTEL_END)
 
 
