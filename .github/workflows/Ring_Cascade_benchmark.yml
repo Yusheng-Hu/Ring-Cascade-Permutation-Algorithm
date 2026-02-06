@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # Solution 1: Limit parallel jobs to 1 to prevent README.md merge conflicts
+      max-parallel: 1 
       matrix:
         # Automatically iterate through N=10, 11, 12, 13
         n_factor: [10, 11, 12, 13]
@@ -69,7 +71,6 @@ jobs:
         cpu_model = os.environ.get('CPU_MODEL', 'Unknown')
 
         # Generate single row for the comparison table
-        # Pre-formatting for future PP/Heaps rows
         new_row = f"| **RCPA** | **{n_val}** | {time_sec} s | `{cpu_model}` | ✅ |\n"
         
         with open("README.md", "r", encoding="utf-8") as f:
@@ -98,14 +99,14 @@ jobs:
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        # Using loop to handle parallel matrix update collisions
-        for i in {1..10}; do
-          git add README.md
-          if git commit -m "docs: update benchmark N=${{ matrix.n_factor }} [skip ci]"; then
-            git pull --rebase origin main
-            git push origin main && exit 0
-          else
-            exit 0
-          fi
-          sleep $(( (RANDOM % 10) + 5 ))
-        done
+        
+        # Pull the latest changes just in case before pushing
+        git pull origin main --rebase
+        git add README.md
+        
+        # Commit and push only if there are changes
+        if git commit -m "docs: update RCPA benchmark data for ${{ env.VENDOR }} N=${{ matrix.n_factor }} [skip ci]"; then
+          git push origin main
+        else
+          echo "No changes to commit"
+        fi
