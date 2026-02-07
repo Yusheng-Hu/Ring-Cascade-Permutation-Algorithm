@@ -47,16 +47,17 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 
 ### 🔹 AMD Architecture Benchmark
 [//]: # (RCPA_PERFORMANCE_AMD_START)
+
 ### 🚀 RCPA Performance Report (N=12)
 - **Last Run:** `2026-02-06 09:02:31 UTC`
 - **Processor:** `AMD EPYC 7763 64-Core Processor`
-
 | Algorithm | N-Factor | Execution Time | Status |
 | :--- | :--- | :--- | :--- |
-| **RCPA** | **12** | 0.098577 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
-| **RCPA** | **10** | 0.001081 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
-| **RCPA** | **11** | 0.009105 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
-| **RCPA** | **13** | 1.216450 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
+| **RCPA** | **12** | 0.090427 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
+| **RCPA** | **10** | 0.000909 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
+| **RCPA** | **11** | 0.008519 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
+| **RCPA** | **13** | 1.134021 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
+
 [//]: # (RCPA_PERFORMANCE_AMD_END)
 
 ### 🔹 Intel Architecture Benchmark
