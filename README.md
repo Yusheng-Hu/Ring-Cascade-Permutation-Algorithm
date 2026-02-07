@@ -53,8 +53,10 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 
 | Algorithm | N-Factor | Execution Time | Status |
 | :--- | :--- | :--- | :--- |
-| **RCPA** | **12** | 0.091476 s | ✅ Success |
-| **RCPA** | **10** | 0.001008 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
+| **RCPA** | **12** | 0.098577 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
+| **RCPA** | **10** | 0.001081 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
+| **RCPA** | **11** | 0.009105 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
+| **RCPA** | **13** | 1.216450 s | `AMD EPYC 7763 64-Core Processor` | ✅ |
 [//]: # (RCPA_PERFORMANCE_AMD_END)
 
 ### 🔹 Intel Architecture Benchmark
