@@ -49,15 +49,15 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 [//]: # (RCPA_PERFORMANCE_AMD_START)
 
 ### 🚀 RCPA Performance Report (N=13)
-- **Last Run:** `2026-02-07 16:32:36 UTC`
+- **Last Run:** `2026-02-07 16:33:22 UTC`
 - **Processor:** `AMD EPYC 7763 64-Core Processor`
 
 | Algorithm | N-Factor | Execution Time | Status |
 | :--- | :--- | :--- | :--- |
-| **RCPA** | **10** | 0.001004 s | ✅ |
-| **RCPA** | **11** | 0.009087 s | ✅ |
-| **RCPA** | **12** | 0.091657 s | ✅ |
-| **RCPA** | **13** | 1.027432 s | ✅ |
+| **RCPA** | **10** | 0.000997 s | ✅ |
+| **RCPA** | **11** | 0.009043 s | ✅ |
+| **RCPA** | **12** | 0.096578 s | ✅ |
+| **RCPA** | **13** | 1.338508 s | ✅ |
 
 [//]: # (RCPA_PERFORMANCE_AMD_END)
 
