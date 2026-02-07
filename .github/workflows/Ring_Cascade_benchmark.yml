@@ -119,26 +119,27 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        # Sync with remote before committing
-        git fetch origin main
-        git rebase origin/main
-        
+        # 1. Stage the changes
         git add README.md
         
-        # Check for changes and push with a retry loop to handle race conditions
+        # 2. Commit the changes first to clear the working directory
         if git diff --staged --quiet; then
           echo "No changes detected, skipping commit."
         else
           git commit -m "docs: update RCPA benchmark N=${{ matrix.n_factor }} for ${{ env.VENDOR }} [skip ci]"
           
-          # Retry loop (up to 5 times) to handle concurrent push collisions
+          # 3. Retry loop with rebase to handle concurrent push collisions
+          # Since the job is max-parallel: 1, conflicts should be minimal, but this handles any race conditions
           for i in {1..5}; do
-            git pull origin main --rebase
-            if git push origin main; then
-              echo "Successfully pushed updates to README.md"
-              break
+            # Pull with rebase to incorporate changes from other potential sources
+            if git pull origin main --rebase; then
+              if git push origin main; then
+                echo "Successfully pushed updates to README.md"
+                exit 0
+              fi
             fi
-            echo "Push failed due to conflict, retrying in 5 seconds (Attempt $i)..."
+            echo "Conflict or push failed, retrying in 5 seconds (Attempt $i)..."
             sleep 5
           done
+          exit 1
         fi
