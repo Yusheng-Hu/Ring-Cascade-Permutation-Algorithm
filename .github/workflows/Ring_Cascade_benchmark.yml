@@ -3,34 +3,23 @@ name: RCPA-Performance-Benchmark
 on:
   workflow_dispatch:
 
-# Ensure only one instance of this workflow runs at a time to prevent README corruption
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 permissions:
   contents: write
 
 jobs:
   benchmark:
-    name: RCPA Benchmark (N=${{ matrix.n_factor }})
+    name: RCPA Sequential Benchmark
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      # CRITICAL: Force sequential execution to prevent git push conflicts
-      max-parallel: 1 
-      matrix:
-        n_factor: [10, 11, 12, 13]
-
+    
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0 # Required for reliable rebasing
+        fetch-depth: 0
 
     - name: Detect CPU Info
       run: |
-        # Extract CPU model and identify vendor
+        # Identify CPU model and vendor once
         CPU_NAME=$(lscpu | grep 'Model name' | cut -f 2 -d ":" | sed 's/^[ \t]*//')
         if [[ "$CPU_NAME" == *"AMD"* ]]; then VENDOR="AMD"; else VENDOR="INTEL"; fi
         echo "CPU_MODEL=$CPU_NAME" >> $GITHUB_ENV
@@ -38,108 +27,86 @@ jobs:
 
     - name: Compile RCPA
       run: |
-        # Compile the RCPA source code with high-performance optimization flags
+        # Compile the RCPA source code
         g++ -O3 -std=c++11 -march=native -ffast-math -fomit-frame-pointer \
         cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_bin -pthread
 
-    - name: Execute RCPA Benchmark
-      run: |
-        # Run the benchmark for the current N value and capture output
-        ./rcpa_bin ${{ matrix.n_factor }} > result_rcpa.txt
-        cat result_rcpa.txt
-
-    - name: Inject into README via Python
+    - name: Run Sequential Benchmarks and Update README
       shell: python
       run: |
-        import os, sys, re
+        import os, subprocess, re
         from datetime import datetime, timedelta, timezone
 
-        # 1. Setup timezone for logging (GMT+8)
-        tz_utc_8 = timezone(timedelta(hours=8))
-        now_beijing = datetime.now(timezone.utc).astimezone(tz_utc_8)
-        timestamp_str = now_beijing.strftime('%Y-%m-%d %H:%M:%S GMT+8')
-
+        # 1. Configuration
+        n_factors = [10, 11, 12, 13]
         vendor = os.environ.get('VENDOR', 'INTEL')
+        cpu_model = os.environ.get('CPU_MODEL', 'Unknown')
         start_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_START)"
         end_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_END)"
-        
-        # 2. Parse results from the text file
-        with open("result_rcpa.txt", "r") as f:
-            log = f.read()
-        
-        match = re.search(r"\[METRIC_START\]\nN_VALUE: (\d+)\nTIME_SEC: ([\d.]+)\n\[METRIC_END\]", log)
-        if not match:
-            print("Error: Metrics not found in output!")
-            sys.exit(1)
-            
-        n_val = match.group(1)
-        time_sec = match.group(2)
-        cpu_model = os.environ.get('CPU_MODEL', 'Unknown')
+        readme_path = "README.md"
 
-        # 3. Format the data row for Markdown table
-        new_row = f"| **RCPA** | **{n_val}** | {time_sec} s | `{cpu_model}` | ✅ |"
-        
-        if not os.path.exists("README.md"):
-            print("Error: README.md is missing!")
-            sys.exit(1)
+        # 2. Load README
+        if not os.path.exists(readme_path):
+            print("README.md not found")
+            exit(1)
+        with open(readme_path, "r", encoding="utf-8") as f:
+            readme_content = f.read()
 
-        with open("README.md", "r", encoding="utf-8") as f:
-            readme = f.read()
+        # 3. Sequential Execution Loop
+        for n in n_factors:
+            print(f"--- Running Benchmark for N={n} ---")
+            # Execute binary and capture output
+            result = subprocess.run(["./rcpa_bin", str(n)], capture_output=True, text=True)
+            log = result.stdout
+            print(log)
+
+            # Parse metrics
+            match = re.search(r"\[METRIC_START\]\nN_VALUE: (\d+)\nTIME_SEC: ([\d.]+)\n\[METRIC_END\]", log)
+            if not match:
+                print(f"Warning: Could not find metrics for N={n}")
+                continue
             
-        if start_m in readme and end_m in readme:
-            parts = readme.split(start_m)
-            prefix = parts[0]
-            middle_and_suffix = parts[1].split(end_m)
-            content = middle_and_suffix[0].strip()
-            suffix = middle_and_suffix[1]
-            
-            # Initialize table structure if not present
-            if "| Algorithm |" not in content:
-                content = "| Algorithm | N | Time | CPU | Status |\n| :--- | :--- | :--- | :--- | :--- |"
-            
-            # Use regex to find and update existing row for this N value, or append new row
-            n_row_pattern = rf"\| \*\*RCPA\*\* \| \*\*{n_val}\*\* \|.*"
-            if re.search(n_row_pattern, content):
-                updated_content = re.sub(n_row_pattern, new_row, content)
+            n_val, time_sec = match.group(1), match.group(2)
+            new_row = f"| **RCPA** | **{n_val}** | {time_sec} s | `{cpu_model}` | ✅ |"
+
+            # 4. Update content in memory
+            if start_m in readme_content and end_m in readme_content:
+                parts = readme_content.split(start_m)
+                prefix = parts[0]
+                middle_suffix = parts[1].split(end_m)
+                content = middle_suffix[0].strip()
+                suffix = middle_suffix[1]
+
+                if "| Algorithm |" not in content:
+                    content = "| Algorithm | N | Time | CPU | Status |\n| :--- | :--- | :--- | :--- | :--- |"
+                
+                # Replace existing row or append
+                n_row_pattern = rf"\| \*\*RCPA\*\* \| \*\*{n_val}\*\* \|.*"
+                if re.search(n_row_pattern, content):
+                    content = re.sub(n_row_pattern, new_row, content)
+                else:
+                    content += "\n" + new_row
+                
+                readme_content = f"{prefix}{start_m}\n{content.strip()}\n{end_m}{suffix}"
             else:
-                updated_content = content + "\n" + new_row
-            
-            # Combine everything back together
-            new_readme = f"{prefix}{start_m}\n{updated_content}\n{end_m}{suffix}"
-            
-            with open("README.md", "w", encoding="utf-8") as f:
-                f.write(new_readme)
-        else:
-            print(f"Error: Marker {start_m} not found in README.md")
-            sys.exit(1)
+                print(f"Error: Marker {start_m} not found")
+                exit(1)
+
+        # 5. Write back final README
+        with open(readme_path, "w", encoding="utf-8") as f:
+            f.write(readme_content)
 
     - name: Synchronized Push
       run: |
-        # Configure Git credentials
+        # Since all tasks are done sequentially in one job, 
+        # we only need one final commit and push.
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        # 1. Stage the changes
         git add README.md
-        
-        # 2. Commit the changes first to clear the working directory
-        if git diff --staged --quiet; then
-          echo "No changes detected, skipping commit."
+        if git commit -m "docs: sequential update RCPA benchmarks N=10-13 [skip ci]"; then
+          # Use a simple push since we are the only ones modifying it in this run
+          git push origin main
         else
-          git commit -m "docs: update RCPA benchmark N=${{ matrix.n_factor }} for ${{ env.VENDOR }} [skip ci]"
-          
-          # 3. Retry loop with rebase to handle concurrent push collisions
-          # Since the job is max-parallel: 1, conflicts should be minimal, but this handles any race conditions
-          for i in {1..5}; do
-            # Pull with rebase to incorporate changes from other potential sources
-            if git pull origin main --rebase; then
-              if git push origin main; then
-                echo "Successfully pushed updates to README.md"
-                exit 0
-              fi
-            fi
-            echo "Conflict or push failed, retrying in 5 seconds (Attempt $i)..."
-            sleep 5
-          done
-          exit 1
+          echo "No changes to commit"
         fi
