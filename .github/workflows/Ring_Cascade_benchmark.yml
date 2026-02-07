@@ -3,6 +3,10 @@ name: RCPA-Performance-Benchmark
 on:
   workflow_dispatch:
 
+concurrency:
+  group: rcpa-readme-sync
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -33,72 +37,65 @@ jobs:
       shell: python
       run: |
         import os, subprocess, re
+        from datetime import datetime, timezone
 
-        # 1. Configuration
+        # 1. Environment and Markers
         n_factors = [10, 11, 12, 13]
         vendor = os.environ.get('VENDOR', 'INTEL')
         cpu_model = os.environ.get('CPU_MODEL', 'Unknown')
+        timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+        
         start_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_START)"
         end_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_END)"
-        readme_path = "README.md"
+        
+        with open("README.md", "r", encoding="utf-8") as f:
+            readme = f.read()
 
-        # 2. Load and Locate Area
-        with open(readme_path, "r", encoding="utf-8") as f:
-            readme_content = f.read()
+        if start_m not in readme or end_m not in readme:
+            print(f"Error: Markers {start_m} or {end_m} not found!"); exit(1)
 
-        if start_m not in readme_content or end_m not in readme_content:
-            print(f"Error: Markers not found")
-            exit(1)
-
-        parts = readme_content.split(start_m)
-        prefix = parts[0]
-        middle_suffix = parts[1].split(end_m)
-        content_area = middle_suffix[0].strip()
-        suffix = middle_suffix[1]
-
-        # 3. Define Table Template if empty
-        if "| Algorithm |" not in content_area:
-            content_area = "| Algorithm | N | Time | CPU | Status |\n| :--- | :--- | :--- | :--- | :--- |"
-
-        # 4. Process each N factor
-        # We split current table into lines to manage them properly
-        table_lines = content_area.split('\n')
-
+        # 2. Execute N-factors and Store Results
+        results = {}
         for n in n_factors:
             print(f"Running N={n}...")
-            result = subprocess.run(["./rcpa_bin", str(n)], capture_output=True, text=True)
-            match = re.search(r"\[METRIC_START\]\nN_VALUE: (\d+)\nTIME_SEC: ([\d.]+)\n\[METRIC_END\]", result.stdout)
-            
+            # Use capture_output to get metrics
+            res = subprocess.run(["./rcpa_bin", str(n)], capture_output=True, text=True)
+            match = re.search(r"TIME_SEC: ([\d.]+)", res.stdout)
             if match:
-                n_val, time_sec = match.group(1), match.group(2)
-                # Correct column mapping: Algorithm | N | Time | CPU | Status
-                new_row = f"| **RCPA** | **{n_val}** | {time_sec} s | `{cpu_model}` | ✅ |"
-                
-                # Update logic: check if row with this N exists
-                row_pattern = rf"\| \*\*RCPA\*\* \| \*\*{n_val}\*\* \|"
-                found = False
-                for i, line in enumerate(table_lines):
-                    if re.search(row_pattern, line):
-                        table_lines[i] = new_row
-                        found = True
-                        break
-                if not found:
-                    table_lines.append(new_row)
+                # FIXED: Exactly 4 columns to match your header
+                # | Algorithm | N-Factor | Execution Time | Status |
+                results[n] = f"| **RCPA** | **{n}** | {match.group(1)} s | ✅ |"
 
-        # 5. Clean up table structure and reassemble
-        # Ensure there are NO empty lines inside the table but double newlines around markers
-        final_table = "\n".join([line for line in table_lines if line.strip()])
-        new_readme = f"{prefix}{start_m}\n\n{final_table}\n\n{end_m}{suffix}"
+        # 3. Generate Table Content
+        # Re-generating the entire block inside markers to ensure correct formatting
+        table_block = (
+            f"### 🚀 RCPA Performance Report (N={max(n_factors)})\n"
+            f"- **Last Run:** `{timestamp}`\n"
+            f"- **Processor:** `{cpu_model}`\n\n"
+            f"| Algorithm | N-Factor | Execution Time | Status |\n"
+            f"| :--- | :--- | :--- | :--- |\n"
+        )
+        for n in sorted(results.keys()):
+            table_block += results[n] + "\n"
 
-        with open(readme_path, "w", encoding="utf-8") as f:
+        # 4. Splice with MANDATORY empty lines before/after markers
+        parts_before = readme.split(start_m)[0]
+        parts_after = readme.split(end_m)[1]
+        
+        # Double \n ensures the HTML comment marker is invisible and doesn't break the table
+        new_readme = f"{parts_before}{start_m}\n\n{table_block.strip()}\n\n{end_m}{parts_after}"
+
+        with open("README.md", "w", encoding="utf-8") as f:
             f.write(new_readme)
 
     - name: Synchronized Push
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
         git add README.md
-        if git commit -m "docs: fix RCPA table columns and marker visibility [skip ci]"; then
+        if git commit -m "docs: correct RCPA table format and status column [skip ci]"; then
+          # Since it's sequential, simple push is safe
           git push origin main
         else
           echo "No changes to commit"
