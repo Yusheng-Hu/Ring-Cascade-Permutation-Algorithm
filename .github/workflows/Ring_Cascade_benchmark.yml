@@ -19,7 +19,6 @@ jobs:
 
     - name: Detect CPU Info
       run: |
-        # Identify CPU model and vendor once
         CPU_NAME=$(lscpu | grep 'Model name' | cut -f 2 -d ":" | sed 's/^[ \t]*//')
         if [[ "$CPU_NAME" == *"AMD"* ]]; then VENDOR="AMD"; else VENDOR="INTEL"; fi
         echo "CPU_MODEL=$CPU_NAME" >> $GITHUB_ENV
@@ -27,7 +26,6 @@ jobs:
 
     - name: Compile RCPA
       run: |
-        # Compile the RCPA source code
         g++ -O3 -std=c++11 -march=native -ffast-math -fomit-frame-pointer \
         cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_bin -pthread
 
@@ -35,7 +33,6 @@ jobs:
       shell: python
       run: |
         import os, subprocess, re
-        from datetime import datetime, timedelta, timezone
 
         # 1. Configuration
         n_factors = [10, 11, 12, 13]
@@ -45,67 +42,63 @@ jobs:
         end_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_END)"
         readme_path = "README.md"
 
-        # 2. Load README
-        if not os.path.exists(readme_path):
-            print("README.md not found")
-            exit(1)
+        # 2. Load and Locate Area
         with open(readme_path, "r", encoding="utf-8") as f:
             readme_content = f.read()
 
-        # 3. Sequential Execution Loop
+        if start_m not in readme_content or end_m not in readme_content:
+            print(f"Error: Markers not found")
+            exit(1)
+
+        parts = readme_content.split(start_m)
+        prefix = parts[0]
+        middle_suffix = parts[1].split(end_m)
+        content_area = middle_suffix[0].strip()
+        suffix = middle_suffix[1]
+
+        # 3. Define Table Template if empty
+        if "| Algorithm |" not in content_area:
+            content_area = "| Algorithm | N | Time | CPU | Status |\n| :--- | :--- | :--- | :--- | :--- |"
+
+        # 4. Process each N factor
+        # We split current table into lines to manage them properly
+        table_lines = content_area.split('\n')
+
         for n in n_factors:
-            print(f"--- Running Benchmark for N={n} ---")
-            # Execute binary and capture output
+            print(f"Running N={n}...")
             result = subprocess.run(["./rcpa_bin", str(n)], capture_output=True, text=True)
-            log = result.stdout
-            print(log)
-
-            # Parse metrics
-            match = re.search(r"\[METRIC_START\]\nN_VALUE: (\d+)\nTIME_SEC: ([\d.]+)\n\[METRIC_END\]", log)
-            if not match:
-                print(f"Warning: Could not find metrics for N={n}")
-                continue
+            match = re.search(r"\[METRIC_START\]\nN_VALUE: (\d+)\nTIME_SEC: ([\d.]+)\n\[METRIC_END\]", result.stdout)
             
-            n_val, time_sec = match.group(1), match.group(2)
-            new_row = f"| **RCPA** | **{n_val}** | {time_sec} s | `{cpu_model}` | ✅ |"
-
-            # 4. Update content in memory
-            if start_m in readme_content and end_m in readme_content:
-                parts = readme_content.split(start_m)
-                prefix = parts[0]
-                middle_suffix = parts[1].split(end_m)
-                content = middle_suffix[0].strip()
-                suffix = middle_suffix[1]
-
-                if "| Algorithm |" not in content:
-                    content = "| Algorithm | N | Time | CPU | Status |\n| :--- | :--- | :--- | :--- | :--- |"
+            if match:
+                n_val, time_sec = match.group(1), match.group(2)
+                # Correct column mapping: Algorithm | N | Time | CPU | Status
+                new_row = f"| **RCPA** | **{n_val}** | {time_sec} s | `{cpu_model}` | ✅ |"
                 
-                # Replace existing row or append
-                n_row_pattern = rf"\| \*\*RCPA\*\* \| \*\*{n_val}\*\* \|.*"
-                if re.search(n_row_pattern, content):
-                    content = re.sub(n_row_pattern, new_row, content)
-                else:
-                    content += "\n" + new_row
-                
-                readme_content = f"{prefix}{start_m}\n{content.strip()}\n{end_m}{suffix}"
-            else:
-                print(f"Error: Marker {start_m} not found")
-                exit(1)
+                # Update logic: check if row with this N exists
+                row_pattern = rf"\| \*\*RCPA\*\* \| \*\*{n_val}\*\* \|"
+                found = False
+                for i, line in enumerate(table_lines):
+                    if re.search(row_pattern, line):
+                        table_lines[i] = new_row
+                        found = True
+                        break
+                if not found:
+                    table_lines.append(new_row)
 
-        # 5. Write back final README
+        # 5. Clean up table structure and reassemble
+        # Ensure there are NO empty lines inside the table but double newlines around markers
+        final_table = "\n".join([line for line in table_lines if line.strip()])
+        new_readme = f"{prefix}{start_m}\n\n{final_table}\n\n{end_m}{suffix}"
+
         with open(readme_path, "w", encoding="utf-8") as f:
-            f.write(readme_content)
+            f.write(new_readme)
 
     - name: Synchronized Push
       run: |
-        # Since all tasks are done sequentially in one job, 
-        # we only need one final commit and push.
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        
         git add README.md
-        if git commit -m "docs: sequential update RCPA benchmarks N=10-13 [skip ci]"; then
-          # Use a simple push since we are the only ones modifying it in this run
+        if git commit -m "docs: fix RCPA table columns and marker visibility [skip ci]"; then
           git push origin main
         else
           echo "No changes to commit"
