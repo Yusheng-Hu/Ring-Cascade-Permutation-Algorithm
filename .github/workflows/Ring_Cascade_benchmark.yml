@@ -2,10 +2,10 @@ name: RCPA-Performance-Benchmark
 
 on:
   workflow_dispatch:
-  # Manual trigger with no inputs required, runs 10 to 13 automatically
 
+# Ensure only one instance of this workflow runs at a time to prevent README corruption
 concurrency:
-  group: rcpa-readme-sync
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # Ensure jobs run sequentially to avoid git push conflicts
+      # CRITICAL: Force sequential execution to prevent git push conflicts
       max-parallel: 1 
       matrix:
         n_factor: [10, 11, 12, 13]
@@ -26,11 +26,11 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0
+        fetch-depth: 0 # Required for reliable rebasing
 
     - name: Detect CPU Info
       run: |
-        # Extract CPU model name and determine vendor
+        # Extract CPU model and identify vendor
         CPU_NAME=$(lscpu | grep 'Model name' | cut -f 2 -d ":" | sed 's/^[ \t]*//')
         if [[ "$CPU_NAME" == *"AMD"* ]]; then VENDOR="AMD"; else VENDOR="INTEL"; fi
         echo "CPU_MODEL=$CPU_NAME" >> $GITHUB_ENV
@@ -38,13 +38,13 @@ jobs:
 
     - name: Compile RCPA
       run: |
-        # Compile the C++ source with optimization flags
+        # Compile the RCPA source code with high-performance optimization flags
         g++ -O3 -std=c++11 -march=native -ffast-math -fomit-frame-pointer \
         cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_bin -pthread
 
     - name: Execute RCPA Benchmark
       run: |
-        # Execute the binary for the current N value in the matrix
+        # Run the benchmark for the current N value and capture output
         ./rcpa_bin ${{ matrix.n_factor }} > result_rcpa.txt
         cat result_rcpa.txt
 
@@ -54,7 +54,7 @@ jobs:
         import os, sys, re
         from datetime import datetime, timedelta, timezone
 
-        # 1. Handle Timezone (UTC+8)
+        # 1. Setup timezone for logging (GMT+8)
         tz_utc_8 = timezone(timedelta(hours=8))
         now_beijing = datetime.now(timezone.utc).astimezone(tz_utc_8)
         timestamp_str = now_beijing.strftime('%Y-%m-%d %H:%M:%S GMT+8')
@@ -63,7 +63,7 @@ jobs:
         start_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_START)"
         end_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_END)"
         
-        # 2. Parse benchmark results
+        # 2. Parse results from the text file
         with open("result_rcpa.txt", "r") as f:
             log = f.read()
         
@@ -76,9 +76,13 @@ jobs:
         time_sec = match.group(2)
         cpu_model = os.environ.get('CPU_MODEL', 'Unknown')
 
-        # 3. Construct the new row for the table
+        # 3. Format the data row for Markdown table
         new_row = f"| **RCPA** | **{n_val}** | {time_sec} s | `{cpu_model}` | ✅ |"
         
+        if not os.path.exists("README.md"):
+            print("Error: README.md is missing!")
+            sys.exit(1)
+
         with open("README.md", "r", encoding="utf-8") as f:
             readme = f.read()
             
@@ -89,25 +93,18 @@ jobs:
             content = middle_and_suffix[0].strip()
             suffix = middle_and_suffix[1]
             
-            # Initialize table header if not exists
+            # Initialize table structure if not present
             if "| Algorithm |" not in content:
                 content = "| Algorithm | N | Time | CPU | Status |\n| :--- | :--- | :--- | :--- | :--- |"
             
-            # 4. Check if N-value row already exists to prevent duplicate/overwrite issues
-            # Using regex to find the specific row for this N value
+            # Use regex to find and update existing row for this N value, or append new row
             n_row_pattern = rf"\| \*\*RCPA\*\* \| \*\*{n_val}\*\* \|.*"
             if re.search(n_row_pattern, content):
-                # Update existing row
                 updated_content = re.sub(n_row_pattern, new_row, content)
             else:
-                # Append new row
                 updated_content = content + "\n" + new_row
             
-            # Update the specific "Last Run" line if you have one in the template
-            # If you want to update the timestamp in the README, uncomment the lines below:
-            # readme_header_pattern = r"Last Run:.*"
-            # prefix = re.sub(readme_header_pattern, f"Last Run: `{timestamp_str}`", prefix)
-
+            # Combine everything back together
             new_readme = f"{prefix}{start_m}\n{updated_content}\n{end_m}{suffix}"
             
             with open("README.md", "w", encoding="utf-8") as f:
@@ -118,16 +115,30 @@ jobs:
 
     - name: Synchronized Push
       run: |
-        # Configure git and push changes sequentially
+        # Configure Git credentials
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        # Pull latest changes (rebase) to handle sequential updates
-        git pull origin main --rebase
+        # Sync with remote before committing
+        git fetch origin main
+        git rebase origin/main
+        
         git add README.md
         
-        if git commit -m "docs: update RCPA benchmark N=${{ matrix.n_factor }} for ${{ env.VENDOR }} [skip ci]"; then
-          git push origin main
+        # Check for changes and push with a retry loop to handle race conditions
+        if git diff --staged --quiet; then
+          echo "No changes detected, skipping commit."
         else
-          echo "No changes to commit"
+          git commit -m "docs: update RCPA benchmark N=${{ matrix.n_factor }} for ${{ env.VENDOR }} [skip ci]"
+          
+          # Retry loop (up to 5 times) to handle concurrent push collisions
+          for i in {1..5}; do
+            git pull origin main --rebase
+            if git push origin main; then
+              echo "Successfully pushed updates to README.md"
+              break
+            fi
+            echo "Push failed due to conflict, retrying in 5 seconds (Attempt $i)..."
+            sleep 5
+          done
         fi
