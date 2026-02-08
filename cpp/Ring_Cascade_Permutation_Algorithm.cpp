@@ -34,15 +34,15 @@ int main(int argc, char* argv[]) {
     const int curr_2nd_last = current_n - 2;
     const int curr_3rd_last = current_n - 3;
 
-#ifdef __linux__
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(0, &cpuset); 
-    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-    printf("Running on CPU core 0\n");
-#else
-    printf("Running on CPU core 2\n");
-#endif
+// #ifdef __linux__
+//     cpu_set_t cpuset;
+//     CPU_ZERO(&cpuset);
+//     CPU_SET(0, &cpuset); 
+//     pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+//     printf("Running on CPU core 0\n");
+// #else
+//     printf("Running on CPU core 2\n");
+// #endif
 
     printf("PARAM_N: %d\n", current_n);
 
