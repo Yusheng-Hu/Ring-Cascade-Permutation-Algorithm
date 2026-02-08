@@ -64,14 +64,16 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 ### 🔹 Intel Architecture Benchmark
 [//]: # (RCPA_PERFORMANCE_INTEL_START)
 
-### 🚀 RCPA Performance Report (N=12)
-- **Last Run:** `2026-02-06 09:14:36 UTC`
+### 🚀 RCPA Performance Report (N=13)
+- **Last Run:** `2026-02-08 04:46:23 UTC`
 - **Processor:** `Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz`
 
 | Algorithm | N-Factor | Execution Time | Status |
 | :--- | :--- | :--- | :--- |
-| **RCPA** | **12** | 0.078088 s | ✅ Success |
-
+| **RCPA** | **10** | 0.000820 s | ✅ |
+| **RCPA** | **11** | 0.008041 s | ✅ |
+| **RCPA** | **12** | 0.079760 s | ✅ |
+| **RCPA** | **13** | 0.891876 s | ✅ |
 
 [//]: # (RCPA_PERFORMANCE_INTEL_END)
 
