@@ -1,6 +1,6 @@
 /**
  * @file Ring_Cascade_Permutation_Algorithm.cpp
- * @brief High-performanceRing-Cascade-Permutation-Algorithm (Strictly Preserved Logic)
+ * @brief High-performance Ring-Cascade-Permutation-Algorithm (Optimized for Benchmarking)
  * @copyright Copyright (c) 2026 [ Yusheng-Hu ]. All rights reserved.
  * @license Licensed under the MIT License.
  */
@@ -11,40 +11,43 @@
 #include <chrono>
 #include <cstdlib>
 
-#ifdef __linux__
-#include <sched.h>
-#include <pthread.h>
+#ifdef _WIN32
+    #include <windows.h>
+#else
+    #include <sched.h>
+    #include <pthread.h>
 #endif
 
-#define N 5
-#define lastIndex (N - 1)
-#define secondLastIndex (N - 2)
-#define thirdLastIndex (N - 3)
-
 int main(int argc, char* argv[]) {
-    // Permutations will be printed only if N <= LITTLE_NUMBER
+    // Permutations will be printed only if n_val <= LITTLE_NUMBER
     const int LITTLE_NUMBER = 5;
 
-    int n_val = N;
-    if (argc > 1) {
-        n_val = std::atoi(argv[1]);
+    // --- Parse Command Line Argument ---
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s <n>\n", argv[0]);
+        return 1;
     }
+    int n_val = std::atoi(argv[1]);
+    if (n_val <= 3) {
+        fprintf(stderr, "Error: n must be greater than 3 for RCPA logic.\n");
+        return 1;
+    }
+
     const int current_n = n_val;
     const int curr_last = current_n - 1;
     const int curr_2nd_last = current_n - 2;
     const int curr_3rd_last = current_n - 3;
 
-// #ifdef __linux__
-//     cpu_set_t cpuset;
-//     CPU_ZERO(&cpuset);
-//     CPU_SET(0, &cpuset); 
-//     pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-//     printf("Running on CPU core 0\n");
-// #else
-//     printf("Running on CPU core 2\n");
-// #endif
-
-    printf("PARAM_N: %d\n", current_n);
+    // --- Set CPU Affinity (Consistent with A-Suite) ---
+#ifdef _WIN32
+    DWORD_PTR mask = 8; // Core 3
+    SetThreadAffinityMask(GetCurrentThread(), mask);
+#else
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(1, &cpuset); // Core 1
+    sched_setaffinity(0, sizeof(cpu_set_t), &cpuset);
+#endif
 
     int* C = (int*)std::calloc(current_n, sizeof(int));
     int* D_flat = (int*)std::calloc(current_n * (3 * current_n), sizeof(int));
@@ -52,9 +55,10 @@ int main(int argc, char* argv[]) {
     // Macro for dynamic D[i][j] access
     #define D_PTR(i, j) (D_flat + (i) * (3 * current_n) + (j))
 
+    // --- Start Timing ---
     auto start_point = std::chrono::high_resolution_clock::now();
 
-    // --- START OF ORIGINAL PRESERVED LOGIC ---
+    // --- RCPA CORE LOGIC ---
     int *P1 = D_PTR(curr_last, 0);
     int *P2 = D_PTR(curr_last, current_n);
     int *P3 = D_PTR(curr_last, current_n * 2 - 1);
@@ -86,7 +90,7 @@ int main(int argc, char* argv[]) {
         std::memcpy(P3, src_ptr, memcpy_size);
 
         for (int circle_index = 0; circle_index < curr_last; circle_index++) {
-            // Check and print permutations for small N
+            // Output for validation
             if (current_n <= LITTLE_NUMBER) {
                 for (int circlehead = circle_index; circlehead < circle_index + current_n; circlehead++) {
                     for (int oneperm = circlehead; oneperm < circlehead + current_n; oneperm++) {
@@ -106,16 +110,17 @@ int main(int argc, char* argv[]) {
             C[i_loop - 1]++;
         }
     }
-    // --- END OF ORIGINAL PRESERVED LOGIC ---
 
+    // --- End Timing ---
     auto end_point = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> diff = end_point - start_point;
-    double duration = diff.count();
 
-    printf("\n[METRIC_START]\n");
-    printf("N_VALUE: %d\n", current_n);
-    printf("TIME_SEC: %lf\n", duration);
-    printf("[METRIC_END]\n");
+    // --- Standardized Report Output ---
+    printf("\nREPORT_START");
+    printf("\nALGORITHM: rcpa_algo");
+    printf("\nN_VALUE: %d", current_n);
+    printf("\nEXECUTION_TIME: %lf", diff.count());
+    printf("\nREPORT_END\n");
     
     std::free(C);
     std::free(D_flat);
