@@ -52,11 +52,14 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 ### 🔹 Intel Architecture Benchmark (Comparison)
 [//]: # (RCPA_VS_HEAP_INTEL_START)
 
-| N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) | Status |
-|---|---|---|---|---|
-| 10 | 0.058088 s | 0.000892 s | **65.12x** | ✅ |
-| 11 | 0.671624 s | 0.008097 s | **82.94x** | ✅ |
-| 12 | 7.832033 s | 0.080812 s | **96.91x** | ✅ |
+**Last Run:** Wed Feb 11 10:55:21 2026 UTC / Wed Feb 11 18:55:21 2026 (UTC+8)
+**Environment:** Unknown Processor (GitHub Actions Runner)
+
+| N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) |
+|---|---|---|---|
+| 10 | 0.058038 s | 0.000902 s | **64.34x** |
+| 11 | 0.643933 s | 0.014575 s | **44.18x** |
+| 12 | 7.838864 s | 0.080947 s | **96.83x** |
 
 [//]: # (RCPA_VS_HEAP_INTEL_END)
 
