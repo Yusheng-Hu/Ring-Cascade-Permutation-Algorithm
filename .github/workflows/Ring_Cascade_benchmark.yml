@@ -14,8 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Define the range of N values for the benchmark
-        n_factor: [10, 11, 12]
+        n_factor: [10, 11, 12, 13]
 
     steps:
     - name: Checkout Repository
@@ -23,15 +22,25 @@ jobs:
 
     - name: Detect CPU Architecture
       run: |
-        # Identify the CPU model and vendor for environmental reporting
-        CPU_NAME=$(lscpu | grep 'Model name' | cut -f 2 -d ":" | sed 's/^[ \t]*//')
-        if [[ "$CPU_NAME" == *"AMD"* ]]; then VENDOR="AMD"; else VENDOR="INTEL"; fi
-        echo "CPU_MODEL=$CPU_NAME" >> $GITHUB_ENV
+        # Capture raw outputs for debugging
+        RAW_LSCPU=$(lscpu | grep -E 'Model name|处理器' | cut -d: -f2 | xargs || echo "N/A")
+        RAW_PROC=$(grep -m 1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs || echo "N/A")
+        
+        # Determine Vendor for marker selection
+        if [[ "$RAW_LSCPU" == *"AMD"* || "$RAW_PROC" == *"AMD"* ]]; then 
+          VENDOR="AMD"
+        else 
+          VENDOR="INTEL"
+        fi
+        
+        # Exporting to GITHUB_ENV for the next stage
+        echo "CPU_MODEL_LSCPU=$RAW_LSCPU" >> $GITHUB_ENV
+        echo "CPU_MODEL_PROC=$RAW_PROC" >> $GITHUB_ENV
         echo "VENDOR=$VENDOR" >> $GITHUB_ENV
 
     - name: Compile Source Files
       run: |
-        # Compiling source files from the 'cpp/' directory with aggressive optimization
+        # Ensure path points to 'cpp/' directory
         g++ -O3 -std=c++11 -march=native -ffast-math \
         cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
         
@@ -39,18 +48,13 @@ jobs:
 
     - name: Run Performance Test
       run: |
-        # Execute Heap's Algorithm and extract the standardized timing output
         H_OUT=$(./heap_test ${{ matrix.n_factor }})
         H_TIME=$(echo "$H_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
         
-        # Execute Ring Cascade Permutation Algorithm (RCPA)
         R_OUT=$(./rcpa_test ${{ matrix.n_factor }})
         R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
         
-        # Calculate speedup factor (Heap Time / RCPA Time)
         SPEEDUP=$(echo "scale=2; $H_TIME / $R_TIME" | bc)
-        
-        # Save results to a temporary file for the aggregation step
         echo "N=${{ matrix.n_factor }}|H=$H_TIME|R=$R_TIME|S=$SPEEDUP" > res_${{ matrix.n_factor }}.txt
 
     - name: Upload Result Artifacts
@@ -59,7 +63,7 @@ jobs:
         name: raw-res-${{ matrix.n_factor }}-${{ env.VENDOR }}
         path: res_${{ matrix.n_factor }}.txt
 
-  # --- Stage 2: README Update ---
+  # --- Stage 2: README Update & Debug Output ---
   update-readme:
     name: Update README with Comparison Table
     needs: benchmark
@@ -76,63 +80,60 @@ jobs:
         path: results
         pattern: raw-res-*
 
-    - name: Process Results and Format Table
+    - name: Process Results and Debug Info
       shell: python
       run: |
         import os, glob, re
         from datetime import datetime, timedelta
 
-        # Get environment details from GitHub environment variables
+        # Get environmental info passed from Stage 1
         vendor = os.environ.get('VENDOR', 'INTEL')
-        cpu_model = os.environ.get('CPU_MODEL', 'Unknown Processor')
+        cpu_lscpu = os.environ.get('CPU_MODEL_LSCPU', 'N/A')
+        cpu_proc = os.environ.get('CPU_MODEL_PROC', 'N/A')
+        
         start_m = f"[//]: # (RCPA_VS_HEAP_{vendor}_START)"
         end_m = f"[//]: # (RCPA_VS_HEAP_{vendor}_END)"
         
-        # Generate Timestamps: UTC and UTC+8 (Beijing Time)
+        # Timestamps
         now_utc = datetime.utcnow()
         now_bj = now_utc + timedelta(hours=8)
         ts_utc = now_utc.strftime("%a %b %d %H:%M:%S %Y UTC")
         ts_bj = now_bj.strftime("%a %b %d %H:%M:%S %Y (UTC+8)")
         
-        # Construct the report header with Run Time and Environment info
+        # Build Table and DEBUG Information
         report_lines = [
             f"**Last Run:** {ts_utc} / {ts_bj}",
-            f"**Environment:** {cpu_model} (GitHub Actions Runner)",
+            f"**Environment (lscpu):** `{cpu_lscpu}`",
+            f"**Environment (procfs):** `{cpu_proc}`",
             "",
             "| N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) |",
             "|---|---|---|---|"
         ]
         
-        # Gather all individual result files
+        # Collect Data
         res_files = glob.glob("results/raw-res-*/res_*.txt")
         data_points = []
         for f in res_files:
             with open(f, 'r') as file:
                 content = file.read().strip()
-                # Parse the data using regex
                 match = re.search(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", content)
-                if match:
-                    data_points.append(match.groups())
+                if match: data_points.append(match.groups())
         
-        # Sort by N value and generate table rows
         for n, h, r, s in sorted(data_points, key=lambda x: int(x[0])):
             report_lines.append(f"| {n} | {h} s | {r} s | **{s}x** |")
 
         new_content = "\n".join(report_lines)
         
-        # Read the existing README.md and replace content between markers
         with open("README.md", "r", encoding="utf-8") as f:
             readme = f.read()
             
         if start_m in readme and end_m in readme:
-            # Pattern to match everything between markers
             pattern = rf"{re.escape(start_m)}.*?{re.escape(end_m)}"
-            # Perform the replacement while keeping the markers
             updated_readme = re.sub(pattern, f"{start_m}\n\n{new_content}\n\n{end_m}", readme, flags=re.DOTALL)
             with open("README.md", "w", encoding="utf-8") as f:
                 f.write(updated_readme)
         else:
-            print(f"Error: Markers {start_m} and {end_m} not found in README.md")
+            print(f"Error: Markers {start_m} / {end_m} not found!")
             exit(1)
 
     - name: Commit and Push Changes
@@ -140,6 +141,5 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add README.md
-        # Commit only if there are changes to the README
-        git commit -m "docs: update RCPA benchmark data and environment info [skip ci]" || exit 0
-        git push origin main
+        git commit -m "docs: update benchmark results with debug info [skip ci]" || exit 0
+        git push origin
