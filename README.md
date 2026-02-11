@@ -45,40 +45,13 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 
 ## 🚀 Performance: Ring Cascade Permutation Algorithm (RCPA)
 
-### 🔹 AMD Architecture Benchmark
-[//]: # (RCPA_PERFORMANCE_AMD_START)
+### 🔹 AMD Architecture Benchmark (Comparison)
+[//]: # (RCPA_VS_HEAP_AMD_START)
+[//]: # (RCPA_VS_HEAP_AMD_END)
 
-### 🚀 RCPA Performance Report (N=13)
-- **Last Run:** `2026-02-08 04:47:54 UTC`
-- **Processor:** `AMD EPYC 7763 64-Core Processor`
-
-| Algorithm | N-Factor | Execution Time | Status |
-| :--- | :--- | :--- | :--- |
-| **RCPA** | **10** | 0.001016 s | ✅ |
-| **RCPA** | **11** | 0.008886 s | ✅ |
-| **RCPA** | **12** | 0.090384 s | ✅ |
-| **RCPA** | **13** | 1.023038 s | ✅ |
-
-[//]: # (RCPA_PERFORMANCE_AMD_END)
-
-### 🔹 Intel Architecture Benchmark
-[//]: # (RCPA_PERFORMANCE_INTEL_START)
-
-### 🚀 RCPA Performance Report (N=13)
-- **Last Run:** `2026-02-08 04:46:23 UTC`
-- **Processor:** `Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz`
-
-| Algorithm | N-Factor | Execution Time | Status |
-| :--- | :--- | :--- | :--- |
-| **RCPA** | **10** | 0.000820 s | ✅ |
-| **RCPA** | **11** | 0.008041 s | ✅ |
-| **RCPA** | **12** | 0.079760 s | ✅ |
-| **RCPA** | **13** | 0.891876 s | ✅ |
-
-[//]: # (RCPA_PERFORMANCE_INTEL_END)
-
-
-> **Observation**: Note that the throughput (Rate) significantly increases as $N$ grows, reaching a record-breaking **4.856 Giga-perms/s** at $N=14$.
+### 🔹 Intel Architecture Benchmark (Comparison)
+[//]: # (RCPA_VS_HEAP_INTEL_START)
+[//]: # (RCPA_VS_HEAP_INTEL_END)
 
 ### Superpermutation Verification
 | Order (N) | Theoretical Lower Bound ($\sum i!$) | Ring-Cascade Algorithm Length | Status |
