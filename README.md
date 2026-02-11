@@ -1,80 +1,128 @@
-# Ring-Cascade Permutation Algorithm
-> Note: Previously titled "Circle-Permutation-Algorithm." The name was updated to ensure uniqueness and prevent naming collisions with common academic algorithms.
+name: RCPA-vs-Heap-Comparison-Benchmark
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Complexity: O((n-1)!)](https://img.shields.io/badge/Complexity-O((n--1)!)-blue.svg)](#)
-[![Language: C++](https://img.shields.io/badge/Language-C%2B%2B-red.svg)](#)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18194997.svg)](https://doi.org/10.5281/zenodo.18194997)
-![Permutation Generation](https://img.shields.io/badge/Field-Combinatorial_Algorithms-blue)
-[![ORCID](https://img.shields.io/badge/ORCID-0009--0005--1980--5751-A6CE39?logo=orcid&logoColor=white)](https://orcid.org/0009-0005-1980-5751)
-[![GitHub stars](https://img.shields.io/github/stars/Yusheng-Hu/Ring-Cascade-Permutation-Algorithm?style=social)](https://github.com/Yusheng-Hu/Ring-Cascade-Permutation-Algorithm)
+on:
+  workflow_dispatch:
 
-An optimized iterative algorithm for Full Permutation generation that challenges the $O(N!)$ amortized complexity barrier.
+permissions:
+  contents: write
 
-**Ring-Cascade-Permutation-Algorithm** is a transformative generation framework for permutations that shatters the operational bottlenecks of classical combinatorial algorithms. By introducing a **triple-segment memory mirroring topology**, this framework demonstrates that active logic overhead can be structurally decoupled from the $n!$ sequence scale.
+jobs:
+  benchmark:
+    name: Benchmark (N=${{ matrix.n_factor }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        n_factor: [10, 11, 12]
 
-This repository is the official C++ implementation of the paper:  
-Work in Progress
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
 
-### Why This Matters
+    - name: Detect CPU
+      id: cpu_info
+      run: |
+        MODEL_NAME=$(grep -m 1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
+        if [[ "$MODEL_NAME" == *"AMD"* ]]; then VENDOR="AMD"; else VENDOR="INTEL"; fi
+        echo "vendor_tag=$VENDOR" >> $GITHUB_OUTPUT
+        echo "CPU_MODEL=$MODEL_NAME" >> $GITHUB_ENV
 
-As discussed in the [computer science community](https://www.reddit.com/r/compsci/comments/1qd6sws/is_the_complexity_of_generating_full_permutations/), $O(N!)$ and $O((N-1)!)$ represent fundamentally different complexity classes:
+    - name: Compile
+      run: |
+        g++ -O3 -std=c++11 -march=native -ffast-math cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
+        g++ -O3 -march=native cpp/heap_perm.cpp -o heap_test -pthread
 
-* **Non-Constant Factor**: Since they differ by a factor of $N$, which grows toward infinity, they are not in the same order of magnitude.
-* **Scalability**: This project focuses on optimizing the transition between permutation sets (e.g., scaling from $N=15$ to $N=16$), significantly enhancing the algorithm's capability to handle larger datasets.
-* **Practical Impact**: By narrowing the computational gap, we make generating permutations for larger $N$ more viable in real-world applications.
+    - name: Execute
+      run: |
+        H_OUT=$(./heap_test ${{ matrix.n_factor }})
+        H_TIME=$(echo "$H_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
+        R_OUT=$(./rcpa_test ${{ matrix.n_factor }})
+        R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
+        SPEEDUP=$(echo "scale=2; $H_TIME / $R_TIME" | bc)
+        echo "N=${{ matrix.n_factor }}|H=$H_TIME|R=$R_TIME|S=$SPEEDUP" > res_${{ matrix.n_factor }}.txt
 
-## 🎮 Live Demo
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: result-${{ matrix.n_factor }}-${{ steps.cpu_info.outputs.vendor_tag }}
+        path: res_${{ matrix.n_factor }}.txt
 
-You can try the interactive Ring-Cascade permutation visualization directly in your browser:
+  update-readme:
+    needs: benchmark
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Download Results
+      uses: actions/download-artifact@v4
+      with:
+        path: raw_data
+        pattern: result-*
 
-👉 **[View Ring-Cascade and Triple Process](https://yusheng-hu.github.io/Ring-Cascade-Permutation-Algorithm/index.html)**
+    - name: Sync to README
+      shell: python
+      run: |
+        import os, glob, re
+        from datetime import datetime, timezone, timedelta
 
----
+        # 1. Vendor Identification
+        all_dirs = glob.glob("raw_data/result-*")
+        vendor = "AMD" if any("-AMD" in d for d in all_dirs) else "INTEL"
+        
+        # 2. MARKERS (Strictly matched to your request)
+        start_tag = f"[//]: # (RCPA_PERFORMANCE_{vendor}_START)"
+        end_tag = f"[//]: # (RCPA_PERFORMANCE_{vendor}_END)"
+        
+        # 3. Environment Info
+        cpu_str = os.popen("grep -m 1 'model name' /proc/cpuinfo | cut -d: -f2").read().strip()
+        now_utc = datetime.now(timezone.utc)
+        now_bj = now_utc + timedelta(hours=8)
+        ts_header = f"**Last Run:** {now_utc.strftime('%Y-%m-%d %H:%M:%S UTC')} / {now_bj.strftime('%Y-%m-%d %H:%M:%S (UTC+8)')}"
+        
+        # 4. Table Construction (NO STATUS COLUMN)
+        table = [
+            ts_header,
+            f"**Processor:** `{cpu_str}`",
+            "",
+            "| N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) |",
+            "| :--- | :--- | :--- | :--- |"
+        ]
+        
+        # 5. Data Processing
+        data_points = []
+        for f_path in glob.glob("raw_data/result-*/res_*.txt"):
+            with open(f_path, 'r') as f:
+                content = f.read().strip()
+                m = re.search(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", content)
+                if m:
+                    data_points.append(m.groups())
+        
+        for n, h, r, s in sorted(data_points, key=lambda x: int(x[0])):
+            table.append(f"| {n} | {h} s | {r} s | **{s}x** |")
 
-## 🚀 Key Highlights
+        final_content = "\n".join(table)
+        
+        # 6. Safety Write
+        with open("README.md", "r", encoding="utf-8") as f:
+            readme = f.read()
+            
+        pattern = re.escape(start_tag) + r".*?" + re.escape(end_tag)
+        if re.search(pattern, readme, re.DOTALL):
+            # This replaces the old table (with Status) with the new one (without Status)
+            updated_readme = re.sub(pattern, f"{start_tag}\n\n{final_content}\n\n{end_tag}", readme, flags=re.DOTALL)
+            with open("README.md", "w", encoding="utf-8") as f:
+                f.write(updated_readme)
+        else:
+            print(f"Error: Required markers {start_tag} not found.")
+            exit(1)
 
-- **Complexity Breakthrough**: Reduces the frequency of state-transition decisions to an amortized **$O((n-1)!)$** level, while the majority of permutations are generated via deterministic topological shifts.
-- **Extreme Performance**: Unlike traditional algorithms, the Ring-Cascade Algorithm's throughput scales positively with order N. It reaches 4.856 Giga/s at N=14, demonstrating the power of its O((n−1)!) amortized logic. This performance translates to a CPP of 0.41, setting a new benchmark for combinatorial generation.
-- **Optimal Superpermutation**: Provides a universal constructive proof for the Superpermutation problem, yielding sequences that strictly attain the theoretical lower bound $L = \sum_{i=1}^{n} i!$.
-- **Stateless Sharding**: Features a mathematically consistent indexing theorem (Theorem 1) that enables efficient **Rank** and **Unrank** operations for massive parallelization.
-
----
-
-## 📊 Benchmarks
-
-## 🚀 Performance: Ring Cascade Permutation Algorithm (RCPA)
-
-### 🔹 AMD Architecture Benchmark (Comparison)
-[//]: # (RCPA_PERFORMANCE_AMD_START)
-
-**Last Run:** 2026-02-11 13:18:32 UTC / 2026-02-11 21:18:32 (UTC+8)
-**Processor:** `Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz`
-
-| N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) | Status |
-| :--- | :--- | :--- | :--- | :--- |
-| 10 | 0.057998 s | 0.000891 s | **65.09x** | ✅ |
-| 11 | 0.647120 s | 0.008215 s | **78.77x** | ✅ |
-| 12 | 7.786484 s | 0.084079 s | **92.60x** | ✅ |
-
-[//]: # (RCPA_PERFORMANCE_AMD_END)
-
-### 🔹 Intel Architecture Benchmark (Comparison)
-[//]: # (RCPA_PERFORMANCE_INTEL_START)
-[//]: # (RCPA_PERFORMANCE_INTEL_END)
-
-## 🚀 Superpermutation Verification
-| Order (N) | Theoretical Lower Bound ($\sum i!$) | Ring-Cascade Algorithm Length | Status |
-|:---:|:---:|:---:|:---:|
-| 10 | 4,037,913 | 4,037,913 | ✅ **MATCH** |
-| 12 | 523,001,313 | 523,001,313 | ✅ **MATCH** |
-| 15 | 1,401,602,636,313 | 1,401,602,636,313 | ✅ **MATCH** |
-
----
-## Citation
-
-If you use this algorithm in your research or project, please cite it as:
-
-> Yusheng-Hu. (2026). Ring-Cascade-Permutation-Algorithm: High-performance Full Permutation Generation [Data set]. Zenodo. https://doi.org/10.5281/zenodo.18194997
-
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18194997.svg)](https://doi.org/10.5281/zenodo.18194997)
+    - name: Commit and Push
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add README.md
+        git commit -m "docs: sync results using RCPA_PERFORMANCE tags [skip ci]" || exit 0
+        git push origin main
