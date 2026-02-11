@@ -14,7 +14,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Define the range of N to test
         n_factor: [10, 11, 12, 13]
 
     steps:
@@ -30,12 +29,13 @@ jobs:
 
     - name: Compile Algorithms
       run: |
+        # Fixed paths: Source files are located in the 'cpp/' directory
         # Compile Ring Cascade Permutation Algorithm (RCPA)
         g++ -O3 -std=c++11 -march=native -ffast-math \
-        Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
+        cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
         
         # Compile Heap's Algorithm (Inherited from A-Suite)
-        g++ -O3 -march=native heap_perm.cpp -o heap_test -pthread
+        g++ -O3 -march=native cpp/heap_perm.cpp -o heap_test -pthread
 
     - name: Execute Comparison Benchmark
       run: |
@@ -47,10 +47,10 @@ jobs:
         R_OUT=$(./rcpa_test ${{ matrix.n_factor }})
         R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
         
-        # Calculate speedup ratio using bc
+        # Calculate speedup ratio
         SPEEDUP=$(echo "scale=2; $H_TIME / $R_TIME" | bc)
         
-        # Save raw metrics to a temporary file for aggregation
+        # Save metrics to a temporary file
         echo "N=${{ matrix.n_factor }}|H=$H_TIME|R=$R_TIME|S=$SPEEDUP" > res_${{ matrix.n_factor }}.txt
 
     - name: Upload Result Artifacts
@@ -81,39 +81,34 @@ jobs:
       run: |
         import os, glob, re
         
-        # Get hardware vendor from environment or default to UNKNOWN
+        # Get hardware vendor from environment
         vendor = os.environ.get('VENDOR', 'UNKNOWN')
         start_m = f"[//]: # (RCPA_VS_HEAP_{vendor}_START)"
         end_m = f"[//]: # (RCPA_VS_HEAP_{vendor}_END)"
         
-        # Construct the Markdown table header
+        # Construct Markdown table
         rows = [
             "| N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) | Status |",
             "|---|---|---|---|---|"
         ]
         
-        # Collect and parse all result files
         res_files = glob.glob("results/raw-res-*/res_*.txt")
         extracted_data = []
         for f in res_files:
             with open(f, 'r') as file:
                 line = file.read().strip()
-                # Expected format: N=10|H=0.123|R=0.045|S=2.73
                 match = re.match(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", line)
                 if match:
                     extracted_data.append(match.groups())
         
-        # Sort results by N value (ascending)
         for n, h, r, s in sorted(extracted_data, key=lambda x: int(x[0])):
             rows.append(f"| {n} | {h} s | {r} s | **{s}x** | ✅ |")
 
         new_table_content = "\n".join(rows)
         
-        # Read the current README.md content
         with open("README.md", "r", encoding="utf-8") as f:
             readme_text = f.read()
             
-        # Replace content between specific markers
         if start_m in readme_text and end_m in readme_text:
             pattern = rf"{re.escape(start_m)}.*?{re.escape(end_m)}"
             replacement = f"{start_m}\n\n{new_table_content}\n\n{end_m}"
@@ -130,6 +125,5 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add README.md
-        # Only commit if there are changes
         git commit -m "docs: auto-update RCPA vs Heap benchmark results [skip ci]" || exit 0
         git push origin main
