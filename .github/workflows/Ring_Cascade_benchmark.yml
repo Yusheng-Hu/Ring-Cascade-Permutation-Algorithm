@@ -7,14 +7,14 @@ permissions:
   contents: write
 
 jobs:
-  # --- Stage 1: Benchmarking and Hardware Detection ---
+  # --- Stage 1: Benchmarking ---
   benchmark:
     name: Benchmark (N=${{ matrix.n_factor }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # Testing up to N=12 as requested for current debug phase
+        # Debug phase limit N <= 12 as requested
         n_factor: [10, 11, 12]
 
     steps:
@@ -24,24 +24,23 @@ jobs:
     - name: Detect CPU and Vendor
       id: cpu_info
       run: |
-        # Extract model name directly from /proc/cpuinfo
+        # Clean extraction of CPU model name
         MODEL_NAME=$(grep -m 1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
         
-        # Determine vendor for README sectioning
+        # Define vendor for correct README sectioning
         if [[ "$MODEL_NAME" == *"AMD"* ]]; then
           VENDOR="AMD"
         else
           VENDOR="INTEL"
         fi
         
-        echo "CPU_MODEL=$MODEL_NAME" >> $GITHUB_ENV
         echo "VENDOR=$VENDOR" >> $GITHUB_ENV
         echo "vendor_tag=$VENDOR" >> $GITHUB_OUTPUT
-        echo "Detected: $MODEL_NAME (Vendor: $VENDOR)"
+        echo "CPU_MODEL=$MODEL_NAME" >> $GITHUB_ENV
 
     - name: Compile Sources
       run: |
-        # Using aggressive optimization for performance testing
+        # High-optimization compilation
         g++ -O3 -std=c++11 -march=native -ffast-math \
         cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
         
@@ -49,28 +48,26 @@ jobs:
 
     - name: Execute Comparison
       run: |
-        # Run Heap's Algorithm
+        # Heap's Algorithm execution
         H_OUT=$(./heap_test ${{ matrix.n_factor }})
         H_TIME=$(echo "$H_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
         
-        # Run RCPA
+        # RCPA execution
         R_OUT=$(./rcpa_test ${{ matrix.n_factor }})
         R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
         
-        # Calculate speedup
+        # Speedup calculation
         SPEEDUP=$(echo "scale=2; $H_TIME / $R_TIME" | bc)
         
-        # Save results to a standardized format
         echo "N=${{ matrix.n_factor }}|H=$H_TIME|R=$R_TIME|S=$SPEEDUP" > res_${{ matrix.n_factor }}.txt
 
     - name: Upload Results
       uses: actions/upload-artifact@v4
       with:
-        # Tagging artifact with vendor to prevent cross-contamination in Stage 2
         name: result-${{ matrix.n_factor }}-${{ steps.cpu_info.outputs.vendor_tag }}
         path: res_${{ matrix.n_factor }}.txt
 
-  # --- Stage 2: README Synchronization ---
+  # --- Stage 2: Update README ---
   update-readme:
     name: Update README Table
     needs: benchmark
@@ -87,30 +84,29 @@ jobs:
         path: raw_data
         pattern: result-*
 
-    - name: Process Data and Update
+    - name: Sync Results to README
       shell: python
       run: |
         import os, glob, re
         from datetime import datetime, timedelta
 
-        # Identify current runner vendor based on downloaded artifacts
+        # Determine vendor based on artifact naming
         all_dirs = glob.glob("raw_data/result-*")
         current_vendor = "AMD" if any("-AMD" in d for d in all_dirs) else "INTEL"
         
-        # Define README markers based on detected vendor
         start_tag = f"[//]: # (RCPA_VS_HEAP_{current_vendor}_START)"
         end_tag = f"[//]: # (RCPA_VS_HEAP_{current_vendor}_END)"
         
-        # Fetch actual CPU model from local environment
+        # Get CPU info for the environment string
         cpu_str = os.popen("grep -m 1 'model name' /proc/cpuinfo | cut -d: -f2").read().strip()
         
-        # Timestamps (UTC and UTC+8)
+        # Time generation
         now_utc = datetime.utcnow()
         now_bj = now_utc + timedelta(hours=8)
         ts_header = f"**Last Run:** {now_utc.strftime('%a %b %d %H:%M:%S %Y UTC')} / {now_bj.strftime('%a %b %d %H:%M:%S %Y (UTC+8)')}"
         
-        # Prepare Markdown Table
-        table_lines = [
+        # Construct Table content
+        content_lines = [
             ts_header,
             f"**Environment:** {cpu_str} (GitHub Actions Runner)",
             "",
@@ -118,38 +114,28 @@ jobs:
             "| :--- | :--- | :--- | :--- |"
         ]
         
-        # Aggregate data points
+        # Parse data
         results = []
         for file_path in glob.glob("raw_data/result-*/res_*.txt"):
             with open(file_path, 'r') as f:
-                content = f.read().strip()
-                match = re.search(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", content)
-                if match:
-                    results.append(match.groups())
+                match = re.search(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", f.read().strip())
+                if match: results.append(match.groups())
         
-        # Sort by N and build rows
-        for n_val, h_time, r_time, s_factor in sorted(results, key=lambda x: int(x[0])):
-            table_lines.append(f"| {n_val} | {h_time} s | {r_time} s | **{s_factor}x** |")
+        # Sort and build table rows
+        for n, h, r, s in sorted(results, key=lambda x: int(x[0])):
+            content_lines.append(f"| {n} | {h} s | {r} s | **{s}x** |")
 
-        final_content = "\n".join(table_lines)
+        final_table = "\n".join(content_lines)
         
-        # File operations
+        # File I/O
         with open("README.md", "r", encoding="utf-8") as f:
-            readme_text = f.read()
+            readme = f.read()
             
-        if start_tag in readme_text and end_tag in readme_text:
-            regex_pattern = rf"{re.escape(start_tag)}.*?{re.escape(end_tag)}"
-            new_readme = re.sub(regex_pattern, f"{start_tag}\n\n{final_content}\n\n{end_tag}", readme_text, flags=re.DOTALL)
+        if start_tag in readme and end_tag in readme:
+            # Cleanly replace everything between markers with the new table
+            pattern = rf"{re.escape(start_tag)}.*?{re.escape(end_tag)}"
+            new_readme = re.sub(pattern, f"{start_tag}\n\n{final_table}\n\n{end_tag}", readme, flags=re.DOTALL)
             with open("README.md", "w", encoding="utf-8") as f:
                 f.write(new_readme)
         else:
             print(f"Error: Required markers {start_tag} not found.")
-            exit(1)
-
-    - name: Commit Changes
-      run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add README.md
-        git commit -m "docs: update performance benchmarks for $VENDOR [skip ci]" || exit 0
-        git push origin main
