@@ -14,7 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        n_factor: [10, 11, 12, 13]
+        # Define the range of N values for the benchmark
+        n_factor: [10, 11, 12]
 
     steps:
     - name: Checkout Repository
@@ -22,6 +23,7 @@ jobs:
 
     - name: Detect CPU Architecture
       run: |
+        # Identify the CPU model and vendor for environmental reporting
         CPU_NAME=$(lscpu | grep 'Model name' | cut -f 2 -d ":" | sed 's/^[ \t]*//')
         if [[ "$CPU_NAME" == *"AMD"* ]]; then VENDOR="AMD"; else VENDOR="INTEL"; fi
         echo "CPU_MODEL=$CPU_NAME" >> $GITHUB_ENV
@@ -29,7 +31,7 @@ jobs:
 
     - name: Compile Source Files
       run: |
-        # Ensure path points to 'cpp/' directory
+        # Compiling source files from the 'cpp/' directory with aggressive optimization
         g++ -O3 -std=c++11 -march=native -ffast-math \
         cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
         
@@ -37,17 +39,18 @@ jobs:
 
     - name: Run Performance Test
       run: |
-        # Get Heap's Algorithm timing
+        # Execute Heap's Algorithm and extract the standardized timing output
         H_OUT=$(./heap_test ${{ matrix.n_factor }})
         H_TIME=$(echo "$H_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
         
-        # Get RCPA timing
+        # Execute Ring Cascade Permutation Algorithm (RCPA)
         R_OUT=$(./rcpa_test ${{ matrix.n_factor }})
         R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
         
-        # Calculate speedup factor
+        # Calculate speedup factor (Heap Time / RCPA Time)
         SPEEDUP=$(echo "scale=2; $H_TIME / $R_TIME" | bc)
         
+        # Save results to a temporary file for the aggregation step
         echo "N=${{ matrix.n_factor }}|H=$H_TIME|R=$R_TIME|S=$SPEEDUP" > res_${{ matrix.n_factor }}.txt
 
     - name: Upload Result Artifacts
@@ -73,50 +76,70 @@ jobs:
         path: results
         pattern: raw-res-*
 
-    - name: Process Results
+    - name: Process Results and Format Table
       shell: python
       run: |
         import os, glob, re
-        
+        from datetime import datetime, timedelta
+
+        # Get environment details from GitHub environment variables
         vendor = os.environ.get('VENDOR', 'INTEL')
+        cpu_model = os.environ.get('CPU_MODEL', 'Unknown Processor')
         start_m = f"[//]: # (RCPA_VS_HEAP_{vendor}_START)"
         end_m = f"[//]: # (RCPA_VS_HEAP_{vendor}_END)"
         
-        # Updated Table Header (Removed Status)
-        rows = [
+        # Generate Timestamps: UTC and UTC+8 (Beijing Time)
+        now_utc = datetime.utcnow()
+        now_bj = now_utc + timedelta(hours=8)
+        ts_utc = now_utc.strftime("%a %b %d %H:%M:%S %Y UTC")
+        ts_bj = now_bj.strftime("%a %b %d %H:%M:%S %Y (UTC+8)")
+        
+        # Construct the report header with Run Time and Environment info
+        report_lines = [
+            f"**Last Run:** {ts_utc} / {ts_bj}",
+            f"**Environment:** {cpu_model} (GitHub Actions Runner)",
+            "",
             "| N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) |",
             "|---|---|---|---|"
         ]
         
+        # Gather all individual result files
         res_files = glob.glob("results/raw-res-*/res_*.txt")
         data_points = []
         for f in res_files:
             with open(f, 'r') as file:
-                match = re.search(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", file.read().strip())
-                if match: data_points.append(match.groups())
+                content = file.read().strip()
+                # Parse the data using regex
+                match = re.search(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", content)
+                if match:
+                    data_points.append(match.groups())
         
-        # Sort by N and build rows
+        # Sort by N value and generate table rows
         for n, h, r, s in sorted(data_points, key=lambda x: int(x[0])):
-            rows.append(f"| {n} | {h} s | {r} s | **{s}x** |")
+            report_lines.append(f"| {n} | {h} s | {r} s | **{s}x** |")
 
-        new_table = "\n".join(rows)
+        new_content = "\n".join(report_lines)
         
+        # Read the existing README.md and replace content between markers
         with open("README.md", "r", encoding="utf-8") as f:
-            content = f.read()
+            readme = f.read()
             
-        if start_m in content and end_m in content:
+        if start_m in readme and end_m in readme:
+            # Pattern to match everything between markers
             pattern = rf"{re.escape(start_m)}.*?{re.escape(end_m)}"
-            updated = re.sub(pattern, f"{start_m}\n\n{new_table}\n\n{end_m}", content, flags=re.DOTALL)
+            # Perform the replacement while keeping the markers
+            updated_readme = re.sub(pattern, f"{start_m}\n\n{new_content}\n\n{end_m}", readme, flags=re.DOTALL)
             with open("README.md", "w", encoding="utf-8") as f:
-                f.write(updated)
+                f.write(updated_readme)
         else:
-            print(f"Error: Marker {start_m} not found!")
+            print(f"Error: Markers {start_m} and {end_m} not found in README.md")
             exit(1)
 
-    - name: Push to Main Branch
+    - name: Commit and Push Changes
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add README.md
-        git commit -m "docs: remove status column from benchmark results [skip ci]" || exit 0
+        # Commit only if there are changes to the README
+        git commit -m "docs: update RCPA benchmark data and environment info [skip ci]" || exit 0
         git push origin main
