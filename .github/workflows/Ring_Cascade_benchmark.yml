@@ -18,40 +18,29 @@ jobs:
 
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@@v4
 
-    - name: Detect CPU and Vendor
+    - name: Detect CPU
       id: cpu_info
       run: |
         MODEL_NAME=$(grep -m 1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
-        if [[ "$MODEL_NAME" == *"AMD"* ]]; then
-          VENDOR="AMD"
-        else
-          VENDOR="INTEL"
-        fi
-        echo "VENDOR=$VENDOR" >> $GITHUB_ENV
+        if [[ "$MODEL_NAME" == *"AMD"* ]]; then VENDOR="AMD"; else VENDOR="INTEL"; fi
         echo "vendor_tag=$VENDOR" >> $GITHUB_OUTPUT
         echo "CPU_MODEL=$MODEL_NAME" >> $GITHUB_ENV
 
-    - name: Compile Sources
+    - name: Compile
       run: |
-        g++ -O3 -std=c++11 -march=native -ffast-math \
-        cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
-        
+        g++ -O3 -std=c++11 -march=native -ffast-math cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
         g++ -O3 -march=native cpp/heap_perm.cpp -o heap_test -pthread
 
-    - name: Execute Comparison
+    - name: Execute
       run: |
-        H_OUT=$(./heap_test ${{ matrix.n_factor }})
-        H_TIME=$(echo "$H_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
-        
-        R_OUT=$(./rcpa_test ${{ matrix.n_factor }})
-        R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
-        
+        H_TIME=$(./heap_test ${{ matrix.n_factor }} | grep "EXECUTION_TIME:" | awk '{print $2}')
+        R_TIME=$(./rcpa_test ${{ matrix.n_factor }} | grep "EXECUTION_TIME:" | awk '{print $2}')
         SPEEDUP=$(echo "scale=2; $H_TIME / $R_TIME" | bc)
         echo "N=${{ matrix.n_factor }}|H=$H_TIME|R=$R_TIME|S=$SPEEDUP" > res_${{ matrix.n_factor }}.txt
 
-    - name: Upload Results
+    - name: Upload
       uses: actions/upload-artifact@v4
       with:
         name: result-${{ matrix.n_factor }}-${{ steps.cpu_info.outputs.vendor_tag }}
@@ -59,7 +48,6 @@ jobs:
 
   # --- Stage 2: Update README ---
   update-readme:
-    name: Update README Table
     needs: benchmark
     runs-on: ubuntu-latest
     steps:
@@ -74,59 +62,61 @@ jobs:
         path: raw_data
         pattern: result-*
 
-    - name: Sync Results to README
+    - name: Sync to README
       shell: python
       run: |
         import os, glob, re
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timezone, timedelta
 
-        # Check vendor from artifacts
+        # 1. Vendor Identification
         all_dirs = glob.glob("raw_data/result-*")
-        current_vendor = "AMD" if any("-AMD" in d for d in all_dirs) else "INTEL"
+        vendor = "AMD" if any("-AMD" in d for d in all_dirs) else "INTEL"
         
-        # Fixed markers to match your README (RCPA_PERFORMANCE_...)
-        start_tag = f"[//]: # (RCPA_PERFORMANCE_{current_vendor}_START)"
-        end_tag = f"[//]: # (RCPA_PERFORMANCE_{current_vendor}_END)"
+        # 2. Define Markers
+        start_tag = f"[//]: # (RCPA_PERFORMANCE_{vendor}_START)"
+        end_tag = f"[//]: # (RCPA_PERFORMANCE_{vendor}_END)"
         
+        # 3. Environment Info
         cpu_str = os.popen("grep -m 1 'model name' /proc/cpuinfo | cut -d: -f2").read().strip()
-        
-        # Corrected datetime usage (avoiding deprecated utcnow)
         now_utc = datetime.now(timezone.utc)
         now_bj = now_utc + timedelta(hours=8)
         ts_header = f"**Last Run:** {now_utc.strftime('%Y-%m-%d %H:%M:%S UTC')} / {now_bj.strftime('%Y-%m-%d %H:%M:%S (UTC+8)')}"
         
-        content_lines = [
+        # 4. Table Construction (Status column removed)
+        table = [
             ts_header,
             f"**Processor:** `{cpu_str}`",
             "",
-            "| N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) | Status |",
-            "| :--- | :--- | :--- | :--- | :--- |"
+            "| N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) |",
+            "| :--- | :--- | :--- | :--- |"
         ]
         
-        results = []
-        for file_path in glob.glob("raw_data/result-*/res_*.txt"):
-            with open(file_path, 'r') as f:
-                # Fixed the NameError by using 'm' consistently
-                m = re.search(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", f.read().strip())
+        # 5. Data Processing
+        data_points = []
+        for f_path in glob.glob("raw_data/result-*/res_*.txt"):
+            with open(f_path, 'r') as f:
+                content = f.read().strip()
+                # FIXED: Consistently using variable 'm'
+                m = re.search(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", content)
                 if m:
-                    results.append(m.groups())
+                    data_points.append(m.groups())
         
-        for n, h, r, s in sorted(results, key=lambda x: int(x[0])):
-            content_lines.append(f"| {n} | {h} s | {r} s | **{s}x** | ✅ |")
+        for n, h, r, s in sorted(data_points, key=lambda x: int(x[0])):
+            table.append(f"| {n} | {h} s | {r} s | **{s}x** |")
 
-        final_table = "\n".join(content_lines)
+        final_table_content = "\n".join(table)
         
+        # 6. File Update
         with open("README.md", "r", encoding="utf-8") as f:
             readme = f.read()
             
-        # Regex update to find the specific RCPA_PERFORMANCE tags
         pattern = re.escape(start_tag) + r".*?" + re.escape(end_tag)
         if re.search(pattern, readme, re.DOTALL):
-            new_readme = re.sub(pattern, f"{start_tag}\n\n{final_table}\n\n{end_tag}", readme, flags=re.DOTALL)
+            updated_readme = re.sub(pattern, f"{start_tag}\n\n{final_table_content}\n\n{end_tag}", readme, flags=re.DOTALL)
             with open("README.md", "w", encoding="utf-8") as f:
-                f.write(new_readme)
+                f.write(updated_readme)
         else:
-            print(f"Error: Required markers {start_tag} not found in README.")
+            print(f"Error: Required markers {start_tag} not found.")
             exit(1)
 
     - name: Commit and Push
@@ -134,5 +124,5 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add README.md
-        git commit -m "docs: sync benchmark results for $VENDOR [skip ci]" || exit 0
+        git commit -m "docs: update performance results [skip ci]" || exit 0
         git push origin main
