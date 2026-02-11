@@ -63,7 +63,7 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 
 [//]: # (RCPA_VS_HEAP_INTEL_END)
 
-### Superpermutation Verification
+## 🚀 Superpermutation Verification
 | Order (N) | Theoretical Lower Bound ($\sum i!$) | Ring-Cascade Algorithm Length | Status |
 |:---:|:---:|:---:|:---:|
 | 10 | 4,037,913 | 4,037,913 | ✅ **MATCH** |
