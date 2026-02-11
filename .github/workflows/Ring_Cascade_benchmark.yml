@@ -23,7 +23,7 @@ jobs:
     - name: Detect CPU Architecture
       run: |
         # More robust CPU detection
-        CPU_NAME=$(lscpu | grep -E 'Model name|处理器' | cut -d: -f2 | xargs || echo "Unknown CPU")
+        CPU_NAME=$(lscpu | grep -E 'Model name|CPU' | cut -d: -f2 | xargs || echo "Unknown CPU")
         if [ -z "$CPU_NAME" ] || [ "$CPU_NAME" = "Unknown CPU" ]; then
           CPU_NAME=$(grep -m 1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs || echo "Intel Xeon")
         fi
