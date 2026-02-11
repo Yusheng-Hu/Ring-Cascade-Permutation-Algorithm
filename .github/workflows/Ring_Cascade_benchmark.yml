@@ -7,62 +7,51 @@ permissions:
   contents: write
 
 jobs:
-  # --- Stage 1: Benchmark Execution ---
   benchmark:
     name: Comparison (N=${{ matrix.n_factor }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        n_factor: [10, 11, 12]
+        n_factor: [10, 11, 12, 13]
 
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Detect CPU Architecture
+    - name: Detect and Log Raw CPU Info
       run: |
-        # More robust CPU detection
-        CPU_NAME=$(lscpu | grep -E 'Model name|CPU' | cut -d: -f2 | xargs || echo "Unknown CPU")
-        if [ -z "$CPU_NAME" ] || [ "$CPU_NAME" = "Unknown CPU" ]; then
-          CPU_NAME=$(grep -m 1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs || echo "Intel Xeon")
-        fi
-
-        # Determine Vendor for README markers
-        if [[ "$CPU_NAME" == *"AMD"* ]]; then 
-          echo "VENDOR=AMD" >> $GITHUB_ENV
-        else 
-          echo "VENDOR=INTEL" >> $GITHUB_ENV
-        fi
-        echo "CPU_MODEL=$CPU_NAME" >> $GITHUB_ENV
-
-    - name: Compile Source Files
-      run: |
-        g++ -O3 -std=c++11 -march=native -ffast-math \
-        cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
+        # 1. Capture absolute raw data
+        RAW_LSCPU_FULL=$(lscpu)
+        RAW_PROC_CPU=$(head -n 25 /proc/cpuinfo)
         
+        # 2. Basic Vendor check for marker selection
+        if echo "$RAW_LSCPU_FULL" | grep -qi "AMD"; then VENDOR="AMD"; else VENDOR="INTEL"; fi
+        
+        # 3. Export raw data to files for Stage 2 (escaping newlines)
+        echo "$RAW_LSCPU_FULL" > raw_lscpu.log
+        echo "$RAW_PROC_CPU" > raw_proc.log
+        echo "VENDOR=$VENDOR" >> $GITHUB_ENV
+
+    - name: Compile and Run
+      run: |
+        g++ -O3 -std=c++11 -march=native -ffast-math cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
         g++ -O3 -march=native cpp/heap_perm.cpp -o heap_test -pthread
-
-    - name: Run Performance Test
-      run: |
-        H_OUT=$(./heap_test ${{ matrix.n_factor }})
-        H_TIME=$(echo "$H_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
         
-        R_OUT=$(./rcpa_test ${{ matrix.n_factor }})
-        R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
-        
+        H_TIME=$(./heap_test ${{ matrix.n_factor }} | grep "EXECUTION_TIME:" | awk '{print $2}')
+        R_TIME=$(./rcpa_test ${{ matrix.n_factor }} | grep "EXECUTION_TIME:" | awk '{print $2}')
         SPEEDUP=$(echo "scale=2; $H_TIME / $R_TIME" | bc)
         echo "N=${{ matrix.n_factor }}|H=$H_TIME|R=$R_TIME|S=$SPEEDUP" > res_${{ matrix.n_factor }}.txt
 
-    - name: Upload Result Artifacts
+    - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: raw-res-${{ matrix.n_factor }}-${{ env.VENDOR }}
-        path: res_${{ matrix.n_factor }}.txt
+        name: debug-data-${{ matrix.n_factor }}
+        path: |
+          res_*.txt
+          raw_*.log
 
-  # --- Stage 2: README Update ---
   update-readme:
-    name: Update README with Comparison Table
     needs: benchmark
     runs-on: ubuntu-latest
     steps:
@@ -70,76 +59,70 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    
     - name: Download Artifacts
       uses: actions/download-artifact@v4
       with:
-        path: results
-        pattern: raw-res-*
+        path: debug_results
+        pattern: debug-data-*
 
-    - name: Process Results
+    - name: Inject Raw Hardware Info into README
       shell: python
       run: |
         import os, glob, re
         from datetime import datetime, timedelta
 
-        # Get environment details
         vendor = os.environ.get('VENDOR', 'INTEL')
-        cpu_model = os.environ.get('CPU_MODEL', 'Unknown Processor')
-        
-        # Exact markers as they appear in README
         start_m = f"[//]: # (RCPA_VS_HEAP_{vendor}_START)"
         end_m = f"[//]: # (RCPA_VS_HEAP_{vendor}_END)"
         
-        # Timestamps
-        now_utc = datetime.utcnow()
-        now_bj = now_utc + timedelta(hours=8)
-        ts_utc = now_utc.strftime("%a %b %d %H:%M:%S %Y UTC")
-        ts_bj = now_bj.strftime("%a %b %d %H:%M:%S %Y (UTC+8)")
-        
-        # Build Table with correct Markdown spacing
-        report_lines = [
-            f"**Last Run:** {ts_utc} / {ts_bj}",
-            f"**Environment:** {cpu_model} (GitHub Actions Runner)",
+        # Load Raw Data from first artifact
+        log_dir = glob.glob("debug_results/debug-data-*")[0]
+        with open(os.path.join(log_dir, "raw_lscpu.log"), "r") as f:
+            raw_lscpu = f.read()
+        with open(os.path.join(log_dir, "raw_proc.log"), "r") as f:
+            raw_proc = f.read()
+
+        now_bj = datetime.utcnow() + timedelta(hours=8)
+        ts = f"**Last Run:** {datetime.utcnow().strftime('%a %b %d %H:%M:%S %Y UTC')} / {now_bj.strftime('%a %b %d %H:%M:%S %Y (UTC+8)')}"
+
+        # Build the "Detective" Report
+        report = [
+            ts,
+            "### 🔍 Raw Hardware Probe (Debug)",
+            "#### [lscpu output]",
+            "```text", raw_lscpu, "```",
+            "#### [/proc/cpuinfo excerpt]",
+            "```text", raw_proc, "```",
             "",
-            "| N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) |",
+            "| N | Heap's Algorithm (s) | RCPA (s) | Speedup |",
             "|---|---|---|---|"
         ]
-        
-        # Collect Data points
-        res_files = glob.glob("results/raw-res-*/res_*.txt")
-        data_points = []
-        for f in res_files:
-            with open(f, 'r') as file:
-                content = file.read().strip()
-                match = re.search(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", content)
-                if match: data_points.append(match.groups())
-        
-        # Sort and add rows
-        for n, h, r, s in sorted(data_points, key=lambda x: int(x[0])):
-            report_lines.append(f"| {n} | {h} s | {r} s | **{s}x** |")
 
-        new_table_content = "\n".join(report_lines)
+        # Gather results
+        data = []
+        for f in glob.glob("debug_results/debug-data-*/res_*.txt"):
+            m = re.search(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", open(f).read())
+            if m: data.append(m.groups())
+        
+        for n, h, r, s in sorted(data, key=lambda x: int(x[0])):
+            report.append(f"| {n} | {h} s | {r} s | **{s}x** |")
+
+        new_content = "\n".join(report)
         
         with open("README.md", "r", encoding="utf-8") as f:
             readme = f.read()
-            
+        
         if start_m in readme and end_m in readme:
-            # The regex now ensures markers are preserved and content is wrapped in newlines
             pattern = rf"{re.escape(start_m)}.*?{re.escape(end_m)}"
-            replacement = f"{start_m}\n\n{new_table_content}\n\n{end_m}"
-            updated_readme = re.sub(pattern, replacement, readme, flags=re.DOTALL)
-            
+            # Force inclusion of all raw text between markers
+            updated = re.sub(pattern, f"{start_m}\n\n{new_content}\n\n{end_m}", readme, flags=re.DOTALL)
             with open("README.md", "w", encoding="utf-8") as f:
-                f.write(updated_readme)
-        else:
-            print(f"Error: Markers {start_m} / {end_m} not found in README.md")
-            exit(1)
+                f.write(updated)
 
-    - name: Commit and Push Changes
+    - name: Push to GitHub
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add README.md
-        git commit -m "docs: update rcpa benchmark table [skip ci]" || exit 0
+        git commit -m "debug: dump raw cpu info to readme [skip ci]" || exit 0
         git push origin main
