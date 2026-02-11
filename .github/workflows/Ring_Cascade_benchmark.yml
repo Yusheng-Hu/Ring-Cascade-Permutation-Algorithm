@@ -1,102 +1,135 @@
-name: RCPA-Performance-Benchmark
+name: RCPA-vs-Heap-Performance-Benchmark
 
 on:
   workflow_dispatch:
-
-concurrency:
-  group: rcpa-readme-sync
-  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
+  # --- Stage 1: Run Benchmarks for each N in the matrix ---
   benchmark:
-    name: RCPA Sequential Benchmark
+    name: Comparison (N=${{ matrix.n_factor }})
     runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+    strategy:
+      fail-fast: false
+      matrix:
+        # Define the range of N to test
+        n_factor: [10, 11, 12, 13]
 
-    - name: Detect CPU Info
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Detect CPU Architecture
       run: |
         CPU_NAME=$(lscpu | grep 'Model name' | cut -f 2 -d ":" | sed 's/^[ \t]*//')
         if [[ "$CPU_NAME" == *"AMD"* ]]; then VENDOR="AMD"; else VENDOR="INTEL"; fi
         echo "CPU_MODEL=$CPU_NAME" >> $GITHUB_ENV
         echo "VENDOR=$VENDOR" >> $GITHUB_ENV
 
-    - name: Compile RCPA
+    - name: Compile Algorithms
       run: |
-        g++ -O3 -std=c++11 -march=native -ffast-math -fomit-frame-pointer \
-        cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_bin -pthread
+        # Compile Ring Cascade Permutation Algorithm (RCPA)
+        g++ -O3 -std=c++11 -march=native -ffast-math \
+        Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
+        
+        # Compile Heap's Algorithm (Inherited from A-Suite)
+        g++ -O3 -march=native heap_perm.cpp -o heap_test -pthread
 
-    - name: Run Sequential Benchmarks and Update README
+    - name: Execute Comparison Benchmark
+      run: |
+        # Execute Heap's Algorithm and extract execution time
+        H_OUT=$(./heap_test ${{ matrix.n_factor }})
+        H_TIME=$(echo "$H_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
+        
+        # Execute RCPA and extract execution time
+        R_OUT=$(./rcpa_test ${{ matrix.n_factor }})
+        R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
+        
+        # Calculate speedup ratio using bc
+        SPEEDUP=$(echo "scale=2; $H_TIME / $R_TIME" | bc)
+        
+        # Save raw metrics to a temporary file for aggregation
+        echo "N=${{ matrix.n_factor }}|H=$H_TIME|R=$R_TIME|S=$SPEEDUP" > res_${{ matrix.n_factor }}.txt
+
+    - name: Upload Result Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: raw-res-${{ matrix.n_factor }}-${{ env.VENDOR }}
+        path: res_${{ matrix.n_factor }}.txt
+
+  # --- Stage 2: Aggregate results and update README.md ---
+  update-readme:
+    name: Aggregate Results into README
+    needs: benchmark
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Download All Benchmark Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: results
+        pattern: raw-res-*
+
+    - name: Process Data and Inject into README
       shell: python
       run: |
-        import os, subprocess, re
-        from datetime import datetime, timezone
+        import os, glob, re
+        
+        # Get hardware vendor from environment or default to UNKNOWN
+        vendor = os.environ.get('VENDOR', 'UNKNOWN')
+        start_m = f"[//]: # (RCPA_VS_HEAP_{vendor}_START)"
+        end_m = f"[//]: # (RCPA_VS_HEAP_{vendor}_END)"
+        
+        # Construct the Markdown table header
+        rows = [
+            "| N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) | Status |",
+            "|---|---|---|---|---|"
+        ]
+        
+        # Collect and parse all result files
+        res_files = glob.glob("results/raw-res-*/res_*.txt")
+        extracted_data = []
+        for f in res_files:
+            with open(f, 'r') as file:
+                line = file.read().strip()
+                # Expected format: N=10|H=0.123|R=0.045|S=2.73
+                match = re.match(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", line)
+                if match:
+                    extracted_data.append(match.groups())
+        
+        # Sort results by N value (ascending)
+        for n, h, r, s in sorted(extracted_data, key=lambda x: int(x[0])):
+            rows.append(f"| {n} | {h} s | {r} s | **{s}x** | ✅ |")
 
-        # 1. Environment and Markers
-        n_factors = [10, 11, 12, 13]
-        vendor = os.environ.get('VENDOR', 'INTEL')
-        cpu_model = os.environ.get('CPU_MODEL', 'Unknown')
-        timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+        new_table_content = "\n".join(rows)
         
-        start_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_START)"
-        end_m = f"[//]: # (RCPA_PERFORMANCE_{vendor}_END)"
-        
+        # Read the current README.md content
         with open("README.md", "r", encoding="utf-8") as f:
-            readme = f.read()
+            readme_text = f.read()
+            
+        # Replace content between specific markers
+        if start_m in readme_text and end_m in readme_text:
+            pattern = rf"{re.escape(start_m)}.*?{re.escape(end_m)}"
+            replacement = f"{start_m}\n\n{new_table_content}\n\n{end_m}"
+            updated_readme = re.sub(pattern, replacement, readme_text, flags=re.DOTALL)
+            
+            with open("README.md", "w", encoding="utf-8") as f:
+                f.write(updated_readme)
+        else:
+            print(f"Error: Markers {start_m} and {end_m} not found in README.md")
+            exit(1)
 
-        if start_m not in readme or end_m not in readme:
-            print(f"Error: Markers {start_m} or {end_m} not found!"); exit(1)
-
-        # 2. Execute N-factors and Store Results
-        results = {}
-        for n in n_factors:
-            print(f"Running N={n}...")
-            # Use capture_output to get metrics
-            res = subprocess.run(["./rcpa_bin", str(n)], capture_output=True, text=True)
-            match = re.search(r"TIME_SEC: ([\d.]+)", res.stdout)
-            if match:
-                # FIXED: Exactly 4 columns to match your header
-                # | Algorithm | N-Factor | Execution Time | Status |
-                results[n] = f"| **RCPA** | **{n}** | {match.group(1)} s | ✅ |"
-
-        # 3. Generate Table Content
-        # Re-generating the entire block inside markers to ensure correct formatting
-        table_block = (
-            f"### 🚀 RCPA Performance Report (N={max(n_factors)})\n"
-            f"- **Last Run:** `{timestamp}`\n"
-            f"- **Processor:** `{cpu_model}`\n\n"
-            f"| Algorithm | N-Factor | Execution Time | Status |\n"
-            f"| :--- | :--- | :--- | :--- |\n"
-        )
-        for n in sorted(results.keys()):
-            table_block += results[n] + "\n"
-
-        # 4. Splice with MANDATORY empty lines before/after markers
-        parts_before = readme.split(start_m)[0]
-        parts_after = readme.split(end_m)[1]
-        
-        # Double \n ensures the HTML comment marker is invisible and doesn't break the table
-        new_readme = f"{parts_before}{start_m}\n\n{table_block.strip()}\n\n{end_m}{parts_after}"
-
-        with open("README.md", "w", encoding="utf-8") as f:
-            f.write(new_readme)
-
-    - name: Synchronized Push
+    - name: Commit and Push Changes
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        
         git add README.md
-        if git commit -m "docs: correct RCPA table format and status column [skip ci]"; then
-          # Since it's sequential, simple push is safe
-          git push origin main
-        else
-          echo "No changes to commit"
-        fi
+        # Only commit if there are changes
+        git commit -m "docs: auto-update RCPA vs Heap benchmark results [skip ci]" || exit 0
+        git push origin main
