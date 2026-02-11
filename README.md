@@ -51,6 +51,13 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 
 ### 🔹 Intel Architecture Benchmark (Comparison)
 [//]: # (RCPA_VS_HEAP_INTEL_START)
+
+| N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) | Status |
+|---|---|---|---|---|
+| 10 | 0.058088 s | 0.000892 s | **65.12x** | ✅ |
+| 11 | 0.671624 s | 0.008097 s | **82.94x** | ✅ |
+| 12 | 7.832033 s | 0.080812 s | **96.91x** | ✅ |
+
 [//]: # (RCPA_VS_HEAP_INTEL_END)
 
 ### Superpermutation Verification
