@@ -30,9 +30,9 @@ jobs:
 
     - name: Compile Sources
       run: |
-        # Ensure the directory matches your structure (assuming they are in cpp/ folder)
+        # All files are confirmed to be in the cpp/ directory
         g++ -O3 -std=c++11 -march=native -ffast-math cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
-        g++ -O3 -std=c++11 -march=native -ffast-math permpure_full.cpp -o pp_test -pthread
+        g++ -O3 -std=c++11 -march=native -ffast-math cpp/permpure_full.cpp -o pp_test -pthread
 
     - name: Execute Comparison
       run: |
@@ -47,7 +47,7 @@ jobs:
     - name: Upload Results
       uses: actions/upload-artifact@v4
       with:
-        name: result-pp-rcpa-${{ matrix.n_factor }}-${{ steps.cpu_info.outputs.vendor_tag }}
+        name: res-pp-rcpa-${{ matrix.n_factor }}-${{ steps.cpu_info.outputs.vendor_tag }}
         path: res_${{ matrix.n_factor }}.txt
 
   # --- Stage 2: Update README ---
@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Repository
-      uses: autonomy/checkout@v4
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
     
@@ -64,7 +64,7 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         path: raw_data
-        pattern: result-pp-rcpa-*
+        pattern: res-pp-rcpa-*
 
     - name: Sync to README
       shell: python
@@ -72,11 +72,11 @@ jobs:
         import os, glob, re
         from datetime import datetime, timezone, timedelta
 
-        # 1. Vendor Identification
-        all_dirs = glob.glob("raw_data/result-pp-rcpa-*")
+        # 1. Vendor Identification from directory names
+        all_dirs = glob.glob("raw_data/res-pp-rcpa-*")
         vendor = "AMD" if any("-AMD" in d for d in all_dirs) else "INTEL"
         
-        # 2. Markers for PP vs RCPA
+        # 2. Markers for PP vs RCPA in README
         start_tag = f"[//]: # (PP_VS_RCPA_{vendor}_START)"
         end_tag = f"[//]: # (PP_VS_RCPA_{vendor}_END)"
         
@@ -86,7 +86,7 @@ jobs:
         now_bj = now_utc + timedelta(hours=8)
         ts_header = f"**Last Run:** {now_utc.strftime('%Y-%m-%d %H:%M:%S UTC')} / {now_bj.strftime('%Y-%m-%d %H:%M:%S (UTC+8)')}"
         
-        # 4. Table Header
+        # 4. Table Construction
         table = [
             "### PP vs RCPA Performance Comparison",
             ts_header,
@@ -98,21 +98,21 @@ jobs:
         
         # 5. Data Extraction
         data_points = []
-        for f_path in glob.glob("raw_data/result-pp-rcpa-*/res_*.txt"):
-            with open(f_path, 'r') as f:
-                content = f.read().strip()
-                # Pattern: N=10|R=0.123|P=0.111|S=1.10
-                m = re.search(r"N=(\d+)\|R=([\d.]+)\|P=([\d.]+)\|S=([\d.]+)", content)
-                if m:
-                    data_points.append(m.groups())
+        for f_path in glob.glob("raw_data/res-pp-rcpa-*/res_*.txt"):
+            if os.path.isfile(f_path):
+                with open(f_path, 'r') as f:
+                    content = f.read().strip()
+                    m = re.search(r"N=(\d+)\|R=([\d.]+)\|P=([\d.]+)\|S=([\d.]+)", content)
+                    if m:
+                        data_points.append(m.groups())
         
-        # 6. Sorting and Row Creation
+        # 6. Sorting by N and Row Creation
         for n, r, p, s in sorted(data_points, key=lambda x: int(x[0])):
             table.append(f"| {n} | {r} s | {p} s | **{s}x** |")
 
         final_content = "\n".join(table)
         
-        # 7. Document Injection
+        # 7. Safe README Injection
         with open("README.md", "r", encoding="utf-8") as f:
             readme = f.read()
             
@@ -122,7 +122,7 @@ jobs:
             with open("README.md", "w", encoding="utf-8") as f:
                 f.write(updated_readme)
         else:
-            print(f"Error: Required markers {start_tag} not found in README.")
+            print(f"Error: Could not find markers {start_tag} in README.md")
             exit(1)
 
     - name: Commit and Push
@@ -130,5 +130,5 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add README.md
-        git commit -m "docs: sync PP vs RCPA benchmark [skip ci]" || exit 0
+        git commit -m "docs: update PP vs RCPA benchmark results [skip ci]" || exit 0
         git push origin main
