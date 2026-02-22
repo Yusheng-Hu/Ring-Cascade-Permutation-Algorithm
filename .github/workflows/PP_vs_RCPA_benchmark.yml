@@ -9,7 +9,7 @@ permissions:
 jobs:
   # --- Single Stage: Benchmark & Update ---
   benchmark-and-update:
-    name: Sequential Benchmark & README Update
+    name: Sequential Benchmark (PP vs RCPA)
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Repository
@@ -25,26 +25,27 @@ jobs:
 
     - name: Compile Sources
       run: |
-        # Ensure correct path to cpp/ directory
         g++ -O3 -std=c++11 -march=native -ffast-math cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
         g++ -O3 -std=c++11 -march=native -ffast-math cpp/permpure_full.cpp -o pp_test -pthread
 
     - name: Execute Sequential Benchmark
       run: |
-        # Define N factors to test
         N_FACTORS=(10 11 12 13)
-        echo "Starting sequential benchmark for N=${N_FACTORS[*]}"
+        echo "Starting sequential benchmark..."
         
         for n in "${N_FACTORS[@]}"; do
           echo "Running N=$n..."
-          R_OUT=$(./rcpa_test $n)
-          R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
-          
+          # PP Algorithm (Position Pure Algorithm)
           P_OUT=$(./pp_test $n)
           P_TIME=$(echo "$P_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
           
-          SPEEDUP=$(echo "scale=2; $R_TIME / $P_TIME" | bc)
-          echo "N=$n|R=$R_TIME|P=$P_TIME|S=$SPEEDUP" >> results_all.txt
+          # RCPA (Ring Cascade Permutation Algorithm)
+          R_OUT=$(./rcpa_test $n)
+          R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
+          
+          # Calculate speedup (PP / RCPA) to show how much faster RCPA is
+          SPEEDUP=$(echo "scale=2; $P_TIME / $R_TIME" | bc)
+          echo "N=$n|P=$P_TIME|R=$R_TIME|S=$SPEEDUP" >> results_all.txt
         done
 
     - name: Sync to README
@@ -66,28 +67,29 @@ jobs:
         now_bj = now_utc + timedelta(hours=8)
         ts_header = f"**Last Run:** {now_utc.strftime('%Y-%m-%d %H:%M:%S UTC')} / {now_bj.strftime('%Y-%m-%d %H:%M:%S (UTC+8)')}"
         
-        # 4. Table Header
+        # 4. Table Header (Adjusted columns to put RCPA in the 2nd data column)
         table = [
             "### PP vs RCPA Performance Comparison",
             ts_header,
             f"**Processor:** `{cpu_str}`",
             "",
-            "| N | RCPA (s) | PP Algorithm (s) | Speedup (vs RCPA) |",
+            "| N | PP Algorithm (s) | RCPA (s) | Speedup (RCPA vs PP) |",
             "| :--- | :--- | :--- | :--- |"
         ]
         
-        # 5. Load results from the sequential run
+        # 5. Load results
         data_points = []
         if os.path.exists("results_all.txt"):
             with open("results_all.txt", "r") as f:
                 for line in f:
-                    m = re.search(r"N=(\d+)\|R=([\d.]+)\|P=([\d.]+)\|S=([\d.]+)", line)
+                    # Pattern updated to: N|P|R|S
+                    m = re.search(r"N=(\d+)\|P=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", line)
                     if m:
                         data_points.append(m.groups())
 
         # 6. Sorting and Row Creation
-        for n, r, p, s in sorted(data_points, key=lambda x: int(x[0])):
-            table.append(f"| {n} | {r} s | {p} s | **{s}x** |")
+        for n, p, r, s in sorted(data_points, key=lambda x: int(x[0])):
+            table.append(f"| {n} | {p} s | {r} s | **{s}x** |")
 
         final_content = "\n".join(table)
         
@@ -101,7 +103,7 @@ jobs:
             with open("README.md", "w", encoding="utf-8") as f:
                 f.write(updated_readme)
         else:
-            print(f"Error: Markers for {vendor} not found.")
+            print(f"Error: Markers not found.")
             exit(1)
 
     - name: Commit and Push
@@ -109,5 +111,5 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add README.md
-        git commit -m "docs: sequential sync PP vs RCPA benchmark [skip ci]" || exit 0
+        git commit -m "docs: adjust PP vs RCPA table layout [skip ci]" || exit 0
         git push origin main
