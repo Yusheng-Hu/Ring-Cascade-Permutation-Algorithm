@@ -7,84 +7,73 @@ permissions:
   contents: write
 
 jobs:
-  # --- Stage 1: Benchmarking ---
-  benchmark:
-    name: Benchmark (N=${{ matrix.n_factor }})
+  # Sequential job ensures all N factors run on the SAME hardware instance
+  benchmark-and-update:
+    name: Sequential Benchmark & README Update
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        n_factor: [10, 11, 12, 13]
-
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Detect CPU
+    - name: Detect CPU Architecture
       id: cpu_info
       run: |
+        # Identify CPU model and set vendor tag for sectioning
         MODEL_NAME=$(grep -m 1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
         if [[ "$MODEL_NAME" == *"AMD"* ]]; then VENDOR="AMD"; else VENDOR="INTEL"; fi
         echo "vendor_tag=$VENDOR" >> $GITHUB_OUTPUT
         echo "CPU_MODEL=$MODEL_NAME" >> $GITHUB_ENV
 
-    - name: Compile Sources
+    - name: Compile C++ Sources
       run: |
+        # Compile both algorithms located in the cpp/ directory
         g++ -O3 -std=c++11 -march=native -ffast-math cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
         g++ -O3 -march=native cpp/heap_perm.cpp -o heap_test -pthread
 
-    - name: Execute Comparison
+    - name: Execute Sequential Benchmark
       run: |
-        H_OUT=$(./heap_test ${{ matrix.n_factor }})
-        H_TIME=$(echo "$H_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
-        R_OUT=$(./rcpa_test ${{ matrix.n_factor }})
-        R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
-        SPEEDUP=$(echo "scale=2; $H_TIME / $R_TIME" | bc)
-        echo "N=${{ matrix.n_factor }}|H=$H_TIME|R=$R_TIME|S=$SPEEDUP" > res_${{ matrix.n_factor }}.txt
+        # Use a bash loop to run all N factors on this specific CPU instance
+        N_FACTORS=(10 11 12 13)
+        echo "Starting benchmarks sequentially..."
+        
+        for n in "${N_FACTORS[@]}"; do
+          echo "Running N=$n..."
+          
+          # Run Heap's Algorithm
+          H_OUT=$(./heap_test $n)
+          H_TIME=$(echo "$H_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
+          
+          # Run Ring Cascade Permutation Algorithm (RCPA)
+          R_OUT=$(./rcpa_test $n)
+          R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
+          
+          # Calculate Speedup (Heap / RCPA)
+          SPEEDUP=$(echo "scale=2; $H_TIME / $R_TIME" | bc)
+          
+          # Save result to a shared local file
+          echo "N=$n|H=$H_TIME|R=$R_TIME|S=$SPEEDUP" >> results_all.txt
+        done
 
-    - name: Upload Results
-      uses: actions/upload-artifact@v4
-      with:
-        name: result-${{ matrix.n_factor }}-${{ steps.cpu_info.outputs.vendor_tag }}
-        path: res_${{ matrix.n_factor }}.txt
-
-  # --- Stage 2: Safe Update README ---
-  update-readme:
-    needs: benchmark
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    
-    - name: Download Results
-      uses: actions/download-artifact@v4
-      with:
-        path: raw_data
-        pattern: result-*
-
-    - name: Sync to README
+    - name: Update README.md
       shell: python
       run: |
-        import os, glob, re
+        import os, re
         from datetime import datetime, timezone, timedelta
 
-        # 1. Vendor Identification
-        all_dirs = glob.glob("raw_data/result-*")
-        vendor = "AMD" if any("-AMD" in d for d in all_dirs) else "INTEL"
+        # 1. Configuration
+        vendor = "${{ steps.cpu_info.outputs.vendor_tag }}"
+        cpu_str = "${{ env.CPU_MODEL }}"
         
-        # 2. Strict Marker Matching
+        # 2. Match standard Heap vs RCPA markers
         start_tag = f"[//]: # (RCPA_PERFORMANCE_{vendor}_START)"
         end_tag = f"[//]: # (RCPA_PERFORMANCE_{vendor}_END)"
         
-        # 3. Get Environment Info
-        cpu_str = os.popen("grep -m 1 'model name' /proc/cpuinfo | cut -d: -f2").read().strip()
+        # 3. Time Headers
         now_utc = datetime.now(timezone.utc)
         now_bj = now_utc + timedelta(hours=8)
         ts_header = f"**Last Run:** {now_utc.strftime('%Y-%m-%d %H:%M:%S UTC')} / {now_bj.strftime('%Y-%m-%d %H:%M:%S (UTC+8)')}"
         
-        # 4. Clean Table Header (Status Column Removed)
+        # 4. Table Construction
         table = [
             ts_header,
             f"**Processor:** `{cpu_str}`",
@@ -93,22 +82,22 @@ jobs:
             "| :--- | :--- | :--- | :--- |"
         ]
         
-        # 5. Data Extraction
+        # 5. Extract data from the local sequential file
         data_points = []
-        for f_path in glob.glob("raw_data/result-*/res_*.txt"):
-            with open(f_path, 'r') as f:
-                content = f.read().strip()
-                m = re.search(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", content)
-                if m:
-                    data_points.append(m.groups())
-        
-        # 6. Sorting and Row Creation
+        if os.path.exists("results_all.txt"):
+            with open("results_all.txt", "r") as f:
+                for line in f:
+                    m = re.search(r"N=(\d+)\|H=([\d.]+)\|R=([\d.]+)\|S=([\d.]+)", line)
+                    if m:
+                        data_points.append(m.groups())
+
+        # 6. Sort and build rows
         for n, h, r, s in sorted(data_points, key=lambda x: int(x[0])):
             table.append(f"| {n} | {h} s | {r} s | **{s}x** |")
 
         final_content = "\n".join(table)
         
-        # 7. Safe Document Injection
+        # 7. Safe Injection into README
         with open("README.md", "r", encoding="utf-8") as f:
             readme = f.read()
             
@@ -118,13 +107,13 @@ jobs:
             with open("README.md", "w", encoding="utf-8") as f:
                 f.write(updated_readme)
         else:
-            print(f"Error: Required markers {start_tag} not found.")
+            print(f"Error: Markers {start_tag} not found.")
             exit(1)
 
-    - name: Commit and Push
+    - name: Commit and Push Updates
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add README.md
-        git commit -m "docs: sync benchmark results [skip ci]" || exit 0
+        git commit -m "docs: update Heap vs RCPA benchmark results [skip ci]" || exit 0
         git push origin main
