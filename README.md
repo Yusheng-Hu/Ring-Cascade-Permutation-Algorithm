@@ -44,7 +44,7 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 ## 📊 Benchmarks
 
 ## 🚀 Performance: Ring Cascade Permutation Algorithm (RCPA)
-
+## Heap's Algorithm vs RCPA Benchmark
 ### 🔹 AMD Architecture Benchmark (Comparison)
 [//]: # (RCPA_PERFORMANCE_AMD_START)
 
@@ -63,6 +63,18 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 ### 🔹 Intel Architecture Benchmark (Comparison)
 [//]: # (RCPA_PERFORMANCE_INTEL_START)
 [//]: # (RCPA_PERFORMANCE_INTEL_END)
+
+## Positiob Pure Algorithm vs RCPA Benchmark
+### 🔹 AMD Architecture Benchmark (Comparison)
+[//]: # (PP_VS_RCPA_AMD_START)
+
+[//]: # (PP_VS_RCPA_AMD_END)
+
+### 🔹 Intel Architecture Benchmark (Comparison)
+[//]: # (PP_VS_RCPA_INTEL_START)
+
+[//]: # (PP_VS_RCPA_INTEL_END)
+
 
 ## 🚀 Superpermutation Verification
 | Order (N) | Theoretical Lower Bound ($\sum i!$) | Ring-Cascade Algorithm Length | Status |
