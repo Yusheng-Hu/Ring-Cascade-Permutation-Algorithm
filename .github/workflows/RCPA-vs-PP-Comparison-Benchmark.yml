@@ -1,4 +1,4 @@
-name: PP-vs-RCPA-Comparison-Benchmark
+name: RCPA-vs-PP-Comparison-Benchmark
 
 on:
   workflow_dispatch:
