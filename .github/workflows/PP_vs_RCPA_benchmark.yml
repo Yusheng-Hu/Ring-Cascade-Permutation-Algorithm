@@ -1,0 +1,134 @@
+name: PP-vs-RCPA-Comparison-Benchmark
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # --- Stage 1: Benchmarking ---
+  benchmark:
+    name: Benchmark (N=${{ matrix.n_factor }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        n_factor: [10, 11, 12, 13]
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Detect CPU
+      id: cpu_info
+      run: |
+        MODEL_NAME=$(grep -m 1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
+        if [[ "$MODEL_NAME" == *"AMD"* ]]; then VENDOR="AMD"; else VENDOR="INTEL"; fi
+        echo "vendor_tag=$VENDOR" >> $GITHUB_OUTPUT
+        echo "CPU_MODEL=$MODEL_NAME" >> $GITHUB_ENV
+
+    - name: Compile Sources
+      run: |
+        # Ensure the directory matches your structure (assuming they are in cpp/ folder)
+        g++ -O3 -std=c++11 -march=native -ffast-math cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
+        g++ -O3 -std=c++11 -march=native -ffast-math permpure_full.cpp -o pp_test -pthread
+
+    - name: Execute Comparison
+      run: |
+        R_OUT=$(./rcpa_test ${{ matrix.n_factor }})
+        R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
+        P_OUT=$(./pp_test ${{ matrix.n_factor }})
+        P_TIME=$(echo "$P_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
+        # Calculate speedup (RCPA / PP)
+        SPEEDUP=$(echo "scale=2; $R_TIME / $P_TIME" | bc)
+        echo "N=${{ matrix.n_factor }}|R=$R_TIME|P=$P_TIME|S=$SPEEDUP" > res_${{ matrix.n_factor }}.txt
+
+    - name: Upload Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: result-pp-rcpa-${{ matrix.n_factor }}-${{ steps.cpu_info.outputs.vendor_tag }}
+        path: res_${{ matrix.n_factor }}.txt
+
+  # --- Stage 2: Update README ---
+  update-readme:
+    needs: benchmark
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: autonomy/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Download Results
+      uses: actions/download-artifact@v4
+      with:
+        path: raw_data
+        pattern: result-pp-rcpa-*
+
+    - name: Sync to README
+      shell: python
+      run: |
+        import os, glob, re
+        from datetime import datetime, timezone, timedelta
+
+        # 1. Vendor Identification
+        all_dirs = glob.glob("raw_data/result-pp-rcpa-*")
+        vendor = "AMD" if any("-AMD" in d for d in all_dirs) else "INTEL"
+        
+        # 2. Markers for PP vs RCPA
+        start_tag = f"[//]: # (PP_VS_RCPA_{vendor}_START)"
+        end_tag = f"[//]: # (PP_VS_RCPA_{vendor}_END)"
+        
+        # 3. Get Environment Info
+        cpu_str = os.popen("grep -m 1 'model name' /proc/cpuinfo | cut -d: -f2").read().strip()
+        now_utc = datetime.now(timezone.utc)
+        now_bj = now_utc + timedelta(hours=8)
+        ts_header = f"**Last Run:** {now_utc.strftime('%Y-%m-%d %H:%M:%S UTC')} / {now_bj.strftime('%Y-%m-%d %H:%M:%S (UTC+8)')}"
+        
+        # 4. Table Header
+        table = [
+            "### PP vs RCPA Performance Comparison",
+            ts_header,
+            f"**Processor:** `{cpu_str}`",
+            "",
+            "| N | RCPA (s) | PP Algorithm (s) | Speedup (vs RCPA) |",
+            "| :--- | :--- | :--- | :--- |"
+        ]
+        
+        # 5. Data Extraction
+        data_points = []
+        for f_path in glob.glob("raw_data/result-pp-rcpa-*/res_*.txt"):
+            with open(f_path, 'r') as f:
+                content = f.read().strip()
+                # Pattern: N=10|R=0.123|P=0.111|S=1.10
+                m = re.search(r"N=(\d+)\|R=([\d.]+)\|P=([\d.]+)\|S=([\d.]+)", content)
+                if m:
+                    data_points.append(m.groups())
+        
+        # 6. Sorting and Row Creation
+        for n, r, p, s in sorted(data_points, key=lambda x: int(x[0])):
+            table.append(f"| {n} | {r} s | {p} s | **{s}x** |")
+
+        final_content = "\n".join(table)
+        
+        # 7. Document Injection
+        with open("README.md", "r", encoding="utf-8") as f:
+            readme = f.read()
+            
+        pattern = re.escape(start_tag) + r".*?" + re.escape(end_tag)
+        if re.search(pattern, readme, re.DOTALL):
+            updated_readme = re.sub(pattern, f"{start_tag}\n\n{final_content}\n\n{end_tag}", readme, flags=re.DOTALL)
+            with open("README.md", "w", encoding="utf-8") as f:
+                f.write(updated_readme)
+        else:
+            print(f"Error: Required markers {start_tag} not found in README.")
+            exit(1)
+
+    - name: Commit and Push
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add README.md
+        git commit -m "docs: sync PP vs RCPA benchmark [skip ci]" || exit 0
+        git push origin main
