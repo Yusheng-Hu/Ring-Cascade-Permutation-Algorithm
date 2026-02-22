@@ -7,15 +7,10 @@ permissions:
   contents: write
 
 jobs:
-  # --- Stage 1: Benchmarking ---
-  benchmark:
-    name: Benchmark (N=${{ matrix.n_factor }})
+  # --- Single Stage: Benchmark & Update ---
+  benchmark-and-update:
+    name: Sequential Benchmark & README Update
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        n_factor: [10, 11, 12, 13]
-
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
@@ -30,63 +25,48 @@ jobs:
 
     - name: Compile Sources
       run: |
-        # All files are confirmed to be in the cpp/ directory
+        # Ensure correct path to cpp/ directory
         g++ -O3 -std=c++11 -march=native -ffast-math cpp/Ring_Cascade_Permutation_Algorithm.cpp -o rcpa_test -pthread
         g++ -O3 -std=c++11 -march=native -ffast-math cpp/permpure_full.cpp -o pp_test -pthread
 
-    - name: Execute Comparison
+    - name: Execute Sequential Benchmark
       run: |
-        R_OUT=$(./rcpa_test ${{ matrix.n_factor }})
-        R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
-        P_OUT=$(./pp_test ${{ matrix.n_factor }})
-        P_TIME=$(echo "$P_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
-        # Calculate speedup (RCPA / PP)
-        SPEEDUP=$(echo "scale=2; $R_TIME / $P_TIME" | bc)
-        echo "N=${{ matrix.n_factor }}|R=$R_TIME|P=$P_TIME|S=$SPEEDUP" > res_${{ matrix.n_factor }}.txt
-
-    - name: Upload Results
-      uses: actions/upload-artifact@v4
-      with:
-        name: res-pp-rcpa-${{ matrix.n_factor }}-${{ steps.cpu_info.outputs.vendor_tag }}
-        path: res_${{ matrix.n_factor }}.txt
-
-  # --- Stage 2: Update README ---
-  update-readme:
-    needs: benchmark
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    
-    - name: Download Results
-      uses: actions/download-artifact@v4
-      with:
-        path: raw_data
-        pattern: res-pp-rcpa-*
+        # Define N factors to test
+        N_FACTORS=(10 11 12 13)
+        echo "Starting sequential benchmark for N=${N_FACTORS[*]}"
+        
+        for n in "${N_FACTORS[@]}"; do
+          echo "Running N=$n..."
+          R_OUT=$(./rcpa_test $n)
+          R_TIME=$(echo "$R_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
+          
+          P_OUT=$(./pp_test $n)
+          P_TIME=$(echo "$P_OUT" | grep "EXECUTION_TIME:" | awk '{print $2}')
+          
+          SPEEDUP=$(echo "scale=2; $R_TIME / $P_TIME" | bc)
+          echo "N=$n|R=$R_TIME|P=$P_TIME|S=$SPEEDUP" >> results_all.txt
+        done
 
     - name: Sync to README
       shell: python
       run: |
-        import os, glob, re
+        import os, re
         from datetime import datetime, timezone, timedelta
 
-        # 1. Vendor Identification from directory names
-        all_dirs = glob.glob("raw_data/res-pp-rcpa-*")
-        vendor = "AMD" if any("-AMD" in d for d in all_dirs) else "INTEL"
+        # 1. Environment Info
+        vendor = "${{ steps.cpu_info.outputs.vendor_tag }}"
+        cpu_str = "${{ env.CPU_MODEL }}"
         
-        # 2. Markers for PP vs RCPA in README
+        # 2. Markers
         start_tag = f"[//]: # (PP_VS_RCPA_{vendor}_START)"
         end_tag = f"[//]: # (PP_VS_RCPA_{vendor}_END)"
         
-        # 3. Get Environment Info
-        cpu_str = os.popen("grep -m 1 'model name' /proc/cpuinfo | cut -d: -f2").read().strip()
+        # 3. Timestamp
         now_utc = datetime.now(timezone.utc)
         now_bj = now_utc + timedelta(hours=8)
         ts_header = f"**Last Run:** {now_utc.strftime('%Y-%m-%d %H:%M:%S UTC')} / {now_bj.strftime('%Y-%m-%d %H:%M:%S (UTC+8)')}"
         
-        # 4. Table Construction
+        # 4. Table Header
         table = [
             "### PP vs RCPA Performance Comparison",
             ts_header,
@@ -96,23 +76,22 @@ jobs:
             "| :--- | :--- | :--- | :--- |"
         ]
         
-        # 5. Data Extraction
+        # 5. Load results from the sequential run
         data_points = []
-        for f_path in glob.glob("raw_data/res-pp-rcpa-*/res_*.txt"):
-            if os.path.isfile(f_path):
-                with open(f_path, 'r') as f:
-                    content = f.read().strip()
-                    m = re.search(r"N=(\d+)\|R=([\d.]+)\|P=([\d.]+)\|S=([\d.]+)", content)
+        if os.path.exists("results_all.txt"):
+            with open("results_all.txt", "r") as f:
+                for line in f:
+                    m = re.search(r"N=(\d+)\|R=([\d.]+)\|P=([\d.]+)\|S=([\d.]+)", line)
                     if m:
                         data_points.append(m.groups())
-        
-        # 6. Sorting by N and Row Creation
+
+        # 6. Sorting and Row Creation
         for n, r, p, s in sorted(data_points, key=lambda x: int(x[0])):
             table.append(f"| {n} | {r} s | {p} s | **{s}x** |")
 
         final_content = "\n".join(table)
         
-        # 7. Safe README Injection
+        # 7. Update README.md
         with open("README.md", "r", encoding="utf-8") as f:
             readme = f.read()
             
@@ -122,7 +101,7 @@ jobs:
             with open("README.md", "w", encoding="utf-8") as f:
                 f.write(updated_readme)
         else:
-            print(f"Error: Could not find markers {start_tag} in README.md")
+            print(f"Error: Markers for {vendor} not found.")
             exit(1)
 
     - name: Commit and Push
@@ -130,5 +109,5 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add README.md
-        git commit -m "docs: update PP vs RCPA benchmark results [skip ci]" || exit 0
+        git commit -m "docs: sequential sync PP vs RCPA benchmark [skip ci]" || exit 0
         git push origin main
