@@ -69,15 +69,15 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 [//]: # (PP_VS_RCPA_AMD_START)
 
 ### PP vs RCPA Performance Comparison
-**Last Run:** 2026-02-22 02:08:04 UTC / 2026-02-22 10:08:04 (UTC+8)
+**Last Run:** 2026-02-25 02:07:50 UTC / 2026-02-25 10:07:50 (UTC+8)
 **Processor:** `AMD EPYC 7763 64-Core Processor`
 
 | N | PP Algorithm (s) | RCPA (s) | Speedup (RCPA vs PP) |
 | :--- | :--- | :--- | :--- |
-| 10 | 0.006024 s | 0.000892 s | **6.75x** |
-| 11 | 0.064125 s | 0.008109 s | **7.90x** |
-| 12 | 0.721562 s | 0.081100 s | **8.89x** |
-| 13 | 8.572139 s | 0.899614 s | **9.52x** |
+| 10 | 0.006007 s | 0.000898 s | **6.68x** |
+| 11 | 0.064903 s | 0.008214 s | **7.90x** |
+| 12 | 0.729662 s | 0.082313 s | **8.86x** |
+| 13 | 8.641290 s | 0.894688 s | **9.65x** |
 
 [//]: # (PP_VS_RCPA_AMD_END)
 
