@@ -84,6 +84,17 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 ### 🔹 Intel Architecture Benchmark (Comparison)
 [//]: # (PP_VS_RCPA_INTEL_START)
 
+### PP vs RCPA Performance Comparison
+**Last Run:** 2026-02-26 13:29:31 UTC / 2026-02-26 21:29:31 (UTC+8)
+**Processor:** `Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz`
+
+| N | PP Algorithm (s) | RCPA (s) | Speedup (RCPA vs PP) |
+| :--- | :--- | :--- | :--- |
+| 10 | 0.005372 s | 0.000890 s | **6.03x** |
+| 11 | 0.057325 s | 0.008918 s | **6.42x** |
+| 12 | 0.645912 s | 0.083839 s | **7.70x** |
+| 13 | 8.716429 s | 0.939324 s | **9.27x** |
+
 [//]: # (PP_VS_RCPA_INTEL_END)
 
 
