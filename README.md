@@ -64,7 +64,7 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 [//]: # (RCPA_PERFORMANCE_INTEL_START)
 [//]: # (RCPA_PERFORMANCE_INTEL_END)
 
-## Positiob Pure Algorithm vs RCPA Benchmark
+## Position Pure Algorithm vs RCPA Benchmark
 ### 🔹 AMD Architecture Benchmark (Comparison)
 [//]: # (PP_VS_RCPA_AMD_START)
 
