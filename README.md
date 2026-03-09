@@ -48,15 +48,15 @@ You can try the interactive Ring-Cascade permutation visualization directly in y
 ### 🔹 AMD Architecture Benchmark (Comparison)
 [//]: # (RCPA_PERFORMANCE_AMD_START)
 
-**Last Run:** 2026-03-05 01:29:19 UTC / 2026-03-05 09:29:19 (UTC+8)
-**Processor:** `AMD EPYC 9V74 80-Core Processor`
+**Last Run:** 2026-03-09 12:47:54 UTC / 2026-03-09 20:47:54 (UTC+8)
+**Processor:** `AMD EPYC 7763 64-Core Processor`
 
 | N | Heap's Algorithm (s) | RCPA (s) | Speedup (vs Heap) |
 | :--- | :--- | :--- | :--- |
-| 10 | 0.060821 s | 0.000981 s | **61.99x** |
-| 11 | 0.680334 s | 0.008910 s | **76.35x** |
-| 12 | 8.219826 s | 0.088850 s | **92.51x** |
-| 13 | 108.418949 s | 0.974547 s | **111.25x** |
+| 10 | 0.055688 s | 0.000818 s | **68.07x** |
+| 11 | 0.620794 s | 0.007791 s | **79.68x** |
+| 12 | 7.444270 s | 0.075379 s | **98.75x** |
+| 13 | 98.571728 s | 0.840054 s | **117.33x** |
 
 [//]: # (RCPA_PERFORMANCE_AMD_END)
 
