@@ -1,5 +1,4 @@
 # Ring-Cascade Permutation Algorithm
-> Note: Previously titled "Circle-Permutation-Algorithm." The name was updated to ensure uniqueness and prevent naming collisions with common academic algorithms.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Complexity: O((n-1)!)](https://img.shields.io/badge/Complexity-O((n--1)!)-blue.svg)](#)
