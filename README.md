@@ -112,3 +112,5 @@ If you use this algorithm in your research or project, please cite it as:
 > Yusheng-Hu. (2026). Ring-Cascade-Permutation-Algorithm: High-performance Full Permutation Generation [Data set]. Zenodo. https://doi.org/10.5281/zenodo.18194997
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18194997.svg)](https://doi.org/10.5281/zenodo.18194997)
+
+ Hu, Yusheng, Ring-Cascade: A Sub-constant Amortized Time Algorithm for High-Speed Permutation Generation (April 09, 2026). Available at SSRN: https://ssrn.com/abstract=6553539 
